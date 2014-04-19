@@ -21,11 +21,11 @@ function AssetManager() {
 AssetManager.prototype.queueDownload = function (path) {
     console.log(path.toString());
     this.downloadQueue.push(path);
-}
+};
 
 AssetManager.prototype.isDone = function () {
     return (this.downloadQueue.length == this.successCount + this.errorCount);
-}
+};
 AssetManager.prototype.downloadAll = function (callback) {
     if (this.downloadQueue.length === 0) window.setTimeout(callback, 100);
     for (var i = 0; i < this.downloadQueue.length; i++) {
@@ -44,12 +44,12 @@ AssetManager.prototype.downloadAll = function (callback) {
         img.src = path;
         this.cache[path] = img;
     }
-}
+};
 
 AssetManager.prototype.getAsset = function(path){
     //console.log(path.toString());
     return this.cache[path];
-}
+};
 
 
 function GameEngine() {
@@ -69,7 +69,7 @@ GameEngine.prototype.init = function (ctx) {
     this.startInput();
 
     console.log('game initialized');
-}
+};
 
 GameEngine.prototype.start = function () {
     console.log("starting game");
@@ -78,7 +78,7 @@ GameEngine.prototype.start = function () {
         that.loop();
         requestAnimFrame(gameLoop, that.ctx.canvas);
     })();
-}
+};
 
 GameEngine.prototype.startInput = function () {
     console.log('Starting input');
@@ -93,7 +93,7 @@ GameEngine.prototype.startInput = function () {
         }
 
         return { x: x, y: y };
-    }
+    };
 
     var that = this;
 
@@ -110,12 +110,12 @@ GameEngine.prototype.startInput = function () {
     }, false);
 
     console.log('Input started');
-}
+};
 
 GameEngine.prototype.addEntity = function (entity) {
     console.log('added entity');
     this.entities.push(entity);
-}
+};
 
 GameEngine.prototype.draw = function (drawCallback) {
     this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
@@ -127,7 +127,7 @@ GameEngine.prototype.draw = function (drawCallback) {
         drawCallback(this);
     }
     this.ctx.restore();
-}
+};
 
 GameEngine.prototype.update = function () {
     var entitiesCount = this.entities.length;
@@ -145,14 +145,14 @@ GameEngine.prototype.update = function () {
             this.entities.splice(i, 1);
         }
     }
-}
+};
 
 GameEngine.prototype.loop = function () {
     this.update();
     this.draw();
     this.click = null;
     this.wheel = null;
-}
+};
 
 function Entity(game, x, y) {
     this.game = game;
@@ -162,7 +162,7 @@ function Entity(game, x, y) {
 }
 
 Entity.prototype.update = function () {
-}
+};
 
 Entity.prototype.draw = function (ctx) {
     if (this.game.showOutlines && this.radius) {
@@ -172,7 +172,7 @@ Entity.prototype.draw = function (ctx) {
         ctx.stroke();
         ctx.closePath();
     }
-}
+};
 
 Entity.prototype.rotateAndCache = function (image, angle) {
     var offscreenCanvas = document.createElement('canvas');
@@ -189,7 +189,7 @@ Entity.prototype.rotateAndCache = function (image, angle) {
     //offscreenCtx.strokeStyle = "red";
     //offscreenCtx.strokeRect(0,0,size,size);
     return offscreenCanvas;
-}
+};
 
 // GameBoard code below
 
@@ -203,10 +203,10 @@ GameBoard.prototype.constructor = GameBoard;
 
 GameBoard.prototype.update = function () {
     Entity.prototype.update.call(this);
-}
+};
 
 GameBoard.prototype.draw = function (ctx) {
-}
+};
 
 // the "main" code begins here
 
