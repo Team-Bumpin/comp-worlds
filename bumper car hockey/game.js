@@ -1,23 +1,23 @@
 // This game shell was happily copied from Googler Seth Ladd's "Bad Aliens" game and his Google IO talk in 2011
 
-const car1_img_path = "./img/mini_cooper1.png"; // 142 x 73 pixels
-const car2_img_path = "./img/mini_cooper2.png"; // 146 x 67 pixels
-const puck_img_path = "./img/bagel_puck.png"; // 46 x 47 pixels
+car1_img_path = "./img/mini_cooper1.png"; // 142 x 73 pixels
+car2_img_path = "./img/mini_cooper2.png"; // 146 x 67 pixels
+puck_img_path = "./img/bagel_puck.png"; // 46 x 47 pixels
 // averaged offset for cars
-const car_img_x_offset = 72;
-const car_img_y_offset = 35;
-const puck_img_offset = 23;
-const canvas_width = 1233;
-const canvas_height = 710;
-const player1_start_x = 320;
-const player1_start_y = canvas_height / 2;
-const player2_start_x = canvas_width - 320;
-const player2_start_y = canvas_height / 2;
-const accel_key = 87;  // 'W' key
-const backup_key = 83; // 'S' key
-const left_key = 65;   // 'A' key
-const right_key = 68;  // 'D' key
-const COLLISION_COOLDOWN = 5;
+car_img_x_offset = 72;
+car_img_y_offset = 35;
+puck_img_offset = 23;
+canvas_width = 1233;
+canvas_height = 710;
+player1_start_x = 320;
+player1_start_y = canvas_height / 2;
+player2_start_x = canvas_width - 320;
+player2_start_y = canvas_height / 2;
+accel_key = 87;  // 'W' key
+backup_key = 83; // 'S' key
+left_key = 65;   // 'A' key
+right_key = 68;  // 'D' key
+COLLISION_COOLDOWN = 5;
 
 window.requestAnimFrame = (function () {
 	return window.requestAnimationFrame ||
