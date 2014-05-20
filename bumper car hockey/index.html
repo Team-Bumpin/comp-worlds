@@ -1,6 +1,4 @@
-﻿
-
-<!DOCTYPE html>
+﻿���<!DOCTYPE html>
 
 <html>
 
@@ -16,21 +14,49 @@
 
 <body>
 
-    <canvas id="gameWorld" width="1233" height="710" style="border: 1px solid red; background: url(img/ice-hockey-rink.png)"> </canvas>
+    <canvas id="gameWorld" tabindex="1" width="1233" height="710" style="border: 1px solid red; background: url(img/tron_air_rink.png)"> </canvas>
 
+    <div style="position: absolute; left: 130px; top: 15px; width: 220px; height: 30px; background-color: rgba(0,0,0,0); font-family: Impact, Charcoal, sans-serif; font-size: 24pt; color: white; ">
+        BUMPIN' HOCKEY!
+    </div>
     
-
-    <!--Set width=1233, height=710 and background: url(img/ice-hockey-rink.png),
-
-    	and remove comment tags to run script to display image as background.-->
-
+    <div style="position: absolute; left: 470px; top: 15px; width: 76px; height: 30px; background-color: rgba(0,0,0,0); font-family: Impact, Charcoal, sans-serif; font-size: 18pt; color: white; ">
+        Player 1
+    </div>
     
-
+    <div id="score1" style="position: absolute; left: 495px; top: 45px; width: 75px; height: 30px; background-color: rgba(0,0,0,0); font-family: Impact, Charcoal, sans-serif; font-size: 30pt; color: white; ">
+        0
+    </div>
+    
+    <div id="clock" style="position: absolute; left: 583px; top: 15px; width: 75px; height: 30px; background-color: rgba(0,0,0,0); font-family: Impact, Charcoal, sans-serif; font-size: 36pt; color: white; ">
+        0:00
+    </div>
+    
+     <div id="mode" style="position: absolute; left: 553px; top: 75px; width: 153px; height: 30px; background-color: rgba(0,0,0,0); font-family: Impact, Charcoal, sans-serif; font-size: 16pt; color: white; ">
+        "Countin' Bumps"
+    </div>
+    
+    <div style="position: absolute; left: 705px; top: 15px; width: 80px; height: 30px; background-color: rgba(0,0,0,0); font-family: Impact, Charcoal, sans-serif; font-size: 18pt; color: white; ">
+        Player 2
+    </div>
+    
+    <div id="score2" style="position: absolute; left: 734px; top: 45px; width: 75px; height: 30px; background-color: rgba(0,0,0,0); font-family: Impact, Charcoal, sans-serif; font-size: 30pt; color: white; ">
+        0
+    </div>
+    
+    <div id="period" style="position: absolute; left: 953px; top: 15px; width: 253px; height: 30px; background-color: rgba(0,0,0,0); font-family: Impact, Charcoal, sans-serif; font-size: 24pt; color: white; ">
+        PERIOD: 0/0
+    </div>
+    
     <script>
 
 		var c=document.getElementById("gameWorld");
 
 		var ctx=c.getContext("2d");
+
+		var img=document.getElementById("rink");
+
+		ctx.drawImage(img,0,0);
 
         c.focus();
 

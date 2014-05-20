@@ -1,23 +1,29 @@
 // This game shell was happily copied from Googler Seth Ladd's "Bad Aliens" game and his Google IO talk in 2011
+"use strict";
 
-car1_img_path = "./img/mini_cooper1.png"; // 142 x 73 pixels
-car2_img_path = "./img/mini_cooper2.png"; // 146 x 67 pixels
-puck_img_path = "./img/bagel_puck.png"; // 46 x 47 pixels
-// averaged offset for cars
-car_img_x_offset = 72;
-car_img_y_offset = 35;
-puck_img_offset = 23;
-canvas_width = 1233;
-canvas_height = 710;
-player1_start_x = 320;
-player1_start_y = canvas_height / 2;
-player2_start_x = canvas_width - 320;
-player2_start_y = canvas_height / 2;
-accel_key = 87;  // 'W' key
-backup_key = 83; // 'S' key
-left_key = 65;   // 'A' key
-right_key = 68;  // 'D' key
-COLLISION_COOLDOWN = 5;
+var car1_img_path = "./img/blue_tiny.png"; // 142 x 73 pixels
+var car2_img_path = "./img/red_tiny.png"; // 146 x 67 pixels
+var puck_img_path = "./img/tron_mini_disc.png"; // 46 x 47 pixels
+var car_img_x_offset = 72;
+var car_img_y_offset = 35;
+var puck_img_offset = 23;
+var canvas_width = 1233;
+var canvas_height = 710;
+var player1_start_x = 320;
+var player1_start_y = canvas_height / 2;
+var player2_start_x = canvas_width - 320;
+var player2_start_y = canvas_height / 2;
+var accel_key_p1 = 87;  // 'W' key
+var backup_key_p1 = 83; // 'S' key
+var left_key_p1 = 65;   // 'A' key
+var right_key_p1 = 68;  // 'D' key
+var accel_key_p2 = 38;  // Up arrow
+var backup_key_p2 = 40; // Down arrow
+var left_key_p2 = 37;   // Left arrow
+var right_key_p2 = 39;  // Right arrow
+var COLLISION_COOLDOWN = 5;
+var NUM_PERIODS = 3;
+var PERIOD_LENGTH = 120; // seconds
 
 window.requestAnimFrame = (function () {
 	return window.requestAnimationFrame ||
@@ -67,8 +73,23 @@ AssetManager.prototype.downloadAll = function (callback) {
 };
 
 AssetManager.prototype.getAsset = function(path){
-    //console.log(path.toString());
     return this.cache[path];
+};
+
+function Timer() {
+    this.gameTime = 0;
+    this.maxStep = 0.05;
+    this.wallLastTimestamp = 0;
+}
+
+Timer.prototype.tick = function () {
+    var wallCurrent = Date.now();
+    var wallDelta = (wallCurrent - this.wallLastTimestamp) / 1000;
+    this.wallLastTimestamp = wallCurrent;
+
+    var gameDelta = Math.min(wallDelta, this.maxStep);
+    this.gameTime += gameDelta;
+    return gameDelta;
 };
 
 function GameEngine() {
@@ -80,9 +101,6 @@ function GameEngine() {
     this.keydown = null;
     this.surfaceWidth = null;
     this.surfaceHeight = null;
-    this.cars = [];
-    this.puck = null;
-    this.pressedKeys = [0, 0, 0, 0]; // [accel_key, backup_key, left_key, right_key]
 }
 
 GameEngine.prototype.init = function (ctx) {
@@ -90,12 +108,14 @@ GameEngine.prototype.init = function (ctx) {
     this.surfaceWidth = this.ctx.canvas.width;
     this.surfaceHeight = this.ctx.canvas.height;
     this.startInput();
+    this.timer = new Timer();
     console.log('game initialized');
 };
 
 GameEngine.prototype.start = function () {
     console.log("starting game");
     var that = this;
+    // that.countdown(PERIOD_LENGTH);
     (function gameLoop() {
         that.loop();
         requestAnimFrame(gameLoop, that.ctx.canvas);
@@ -108,19 +128,13 @@ GameEngine.prototype.startInput = function () {
     var getXandY = function (e) {
         var x = e.clientX - that.ctx.canvas.getBoundingClientRect().left;
         var y = e.clientY - that.ctx.canvas.getBoundingClientRect().top;
-		/*
-        if (x < 1024) {
-            x = Math.floor(x / 32);
-            y = Math.floor(y / 32);
-        }
-        */
-        return { x: x, y: y };
+		return { x: x, y: y };
     };
 
     var that = this;
     this.ctx.canvas.addEventListener("click", function (e) {
         that.click = getXandY(e);
-        //console.log("click[x=" + that.click.x + ",y=" + that.click.y + "]");
+        // console.log("click[x=" + that.click.x + ",y=" + that.click.y + "]");
     }, false);
     this.ctx.canvas.addEventListener("mousemove", function (e) {
         that.mouse = getXandY(e);
@@ -131,58 +145,78 @@ GameEngine.prototype.startInput = function () {
     }, false);*/
     
     this.ctx.canvas.addEventListener("keydown", function (e) {
-    	// that.keydown = e;
-    	// e.preventDefault();
-    	switch (e.which) {
-        	case accel_key:
+        switch (e.which) {
+        	case accel_key_p1:
 	        	e.preventDefault();
-	        	that.pressedKeys[0] = accel_key;
-	        	//console.log(that.pressedKeys.toString());
+	        	that.cars[0].pressedKeys[0] = 'accel';
 	        	break;
-	        case backup_key:
-	        	e.preventDefault();
-	        	that.pressedKeys[1] = backup_key;
-	        	//console.log(that.pressedKeys.toString());
-	        	break;
-	        case left_key:
-	        	e.preventDefault();
-	        	that.pressedKeys[2] = left_key;
-	        	//console.log(that.pressedKeys.toString());
-	        	break;
-	        case right_key:
-	        	e.preventDefault();
-	        	that.pressedKeys[3] = right_key;
-	        	//console.log(that.pressedKeys.toString());
-	        	break;
+	        case backup_key_p1:
+                e.preventDefault();
+                that.cars[0].pressedKeys[1] = 'backup';
+                break;
+            case left_key_p1:
+                e.preventDefault();
+                that.cars[0].pressedKeys[2] = 'left';
+                break;
+            case right_key_p1:
+                e.preventDefault();
+                that.cars[0].pressedKeys[3] = 'right';
+                break;
+	        case accel_key_p2:
+                e.preventDefault();
+                that.cars[1].pressedKeys[0] = 'accel';
+                break;
+	        case backup_key_p2:
+                e.preventDefault();
+                that.cars[1].pressedKeys[1] = 'backup';
+                break;
+	        case left_key_p2:
+                e.preventDefault();
+                that.cars[1].pressedKeys[2] = 'left';
+                break;
+        	case right_key_p2:
+                e.preventDefault();
+                that.cars[1].pressedKeys[3] = 'right';
+                break;
         	default:
         		//do nothing
         }
     }, false);
     
     this.ctx.canvas.addEventListener("keyup", function (e) {
-    	// that.keydown = e;
-    	// e.preventDefault();
-    	switch (e.which) {
-        	case accel_key:
-	        	e.preventDefault();
-	        	that.pressedKeys[0] = 0;
-	        	//console.log(that.pressedKeys.toString());
-	        	break;
-	        case backup_key:
-	        	e.preventDefault();
-	        	that.pressedKeys[1] = 0;
-	        	//console.log(that.pressedKeys.toString());
-	        	break;
-	        case left_key:
-	        	e.preventDefault();
-	        	that.pressedKeys[2] = 0;
-	        	//console.log(that.pressedKeys.toString());
-	        	break;
-	        case right_key:
-	        	e.preventDefault();
-	        	that.pressedKeys[3] = 0;
-	        	//console.log(that.pressedKeys.toString());
-	        	break;
+        switch (e.which) {
+        	case accel_key_p1:
+                e.preventDefault();
+                that.cars[0].pressedKeys[0] = '';
+                break;
+            case backup_key_p1:
+                e.preventDefault();
+                that.cars[0].pressedKeys[1] = '';
+                break;
+            case left_key_p1:
+                e.preventDefault();
+                that.cars[0].pressedKeys[2] = '';
+                break;
+            case right_key_p1:
+                e.preventDefault();
+                that.cars[0].pressedKeys[3] = '';
+                break;
+            case accel_key_p2:
+                e.preventDefault();
+                that.cars[1].pressedKeys[0] = '';
+                break;
+            case backup_key_p2:
+                e.preventDefault();
+                that.cars[1].pressedKeys[1] = '';
+                break;
+            case left_key_p2:
+                e.preventDefault();
+                that.cars[1].pressedKeys[2] = '';
+                break;
+            case right_key_p2:
+                e.preventDefault();
+                that.cars[1].pressedKeys[3] = '';
+                break;
         	default:
         		// do nothing
         }
@@ -223,11 +257,18 @@ GameEngine.prototype.update = function () {
 };
 
 GameEngine.prototype.loop = function () {
+    this.clockTick = this.timer.tick();
     this.update();
     this.draw();
     this.click = null;
     // this.wheel = null;
     this.keydown = null;
+};
+
+GameEngine.prototype.reset = function () {
+    for (var i = 0; i < this.entities.length; i++) {
+        this.entities[i].reset();
+    }
 };
 
 function Entity(game, x, y) {
@@ -238,6 +279,9 @@ function Entity(game, x, y) {
 }
 
 Entity.prototype.update = function () {
+};
+
+Entity.prototype.reset = function () {
 };
 
 Entity.prototype.draw = function (ctx) {
@@ -268,68 +312,73 @@ function Car(game, x, y, player_num, img_path) {
 	this.velY = 0;
 	this.acceleration = 0.4;
 	this.speedDecay = 0.96;
-	this.rotation = 90;
+	this.rotation = 0;
 	this.rotationStep = 4;
 	this.maxSpeed = 8;
 	this.backSpeed = 5;
     this.radius = 40;
     this.mass = 1;
+    this.pressedKeys = [];
+    this.bumps = 0;
+    
     Entity.call(this, game, x, y);
 }
 
 Car.prototype = new Entity();
 
-Car.prototype.constructor = Car;
+Car.prototype.varructor = Car;
 
 Car.prototype.update = function () {
-    this.x += this.velX;
-    this.y += this.velY;
-
-    var width = this.game.ctx.canvas.width;
-    var height = this.game.ctx.canvas.height;
-    if ((this.x + this.radius > width && this.velX > 0) || (this.x - this.radius < 0 && this.velX < 0)) {
-        this.velX *= -1;
+    if (this.game.running) {
         this.x += this.velX;
-    }
-    if ((this.y + this.radius > height && this.velY > 0) || (this.y - this.radius < 0 && this.velY < 0)) {
-        this.velY *= -1;
         this.y += this.velY;
-    }
-
-    var speed = Math.sqrt(Math.pow(this.velX, 2) + Math.pow(this.velY, 2));
-
-    if (speed > 0.3) {
-        speed *= this.speedDecay;
-        this.velX *= this.speedDecay;
-        this.velY *= this.speedDecay;
-    } else {
-        this.velX = this.velY = speed = 0;
-    }
-
-    for (var i = 0; i < this.game.pressedKeys.length; i++) {
-        switch (this.game.pressedKeys[i]) {
-            case accel_key:
-                speed += this.acceleration;
-                this.velX += this.acceleration * Math.sin(this.rotation * (Math.PI/180));
-                this.velY += this.acceleration * Math.cos(this.rotation * (Math.PI/180)) * -1;
-                break;
-            case backup_key:
-                speed -= this.backSpeed;
-                this.velX -= this.acceleration * Math.sin(this.rotation * (Math.PI/180));
-                this.velY -= this.acceleration * Math.cos(this.rotation * (Math.PI/180)) * -1;
-                break;
-            case left_key:
-                if (speed > 0.3) {
-                    this.rotation -= this.rotationStep * (speed / this.maxSpeed);
-                }
-                break;
-            case right_key:
-                if (speed > 0.3) {
-                    this.rotation += this.rotationStep * (speed / this.maxSpeed);
-                }
-                break;
-            default:
-            // do nothing
+    
+        var width = this.game.ctx.canvas.width;
+        var height = this.game.ctx.canvas.height;
+        if ((this.x + this.radius > width && this.velX > 0) || (this.x - this.radius < 0 && this.velX < 0)) {
+            this.velX *= -1;
+            this.x += this.velX;
+        }
+        if ((this.y + this.radius > height && this.velY > 0) || (this.y - this.radius < 0 && this.velY < 0)) {
+            this.velY *= -1;
+            this.y += this.velY;
+        }
+    
+        var speed = Math.sqrt(Math.pow(this.velX, 2) + Math.pow(this.velY, 2));
+    
+        if (speed > 0.3) {
+            speed *= this.speedDecay;
+            this.velX *= this.speedDecay;
+            this.velY *= this.speedDecay;
+        } else {
+            this.velX = this.velY = speed = 0;
+        }
+    
+        for (var i = 0; i < this.pressedKeys.length; i++) {
+            switch (this.pressedKeys[i]) {
+                case 'accel':
+                    speed += this.acceleration;
+                    this.velX += this.acceleration * Math.sin(this.rotation * (Math.PI/180));
+                    this.velY += this.acceleration * Math.cos(this.rotation * (Math.PI/180)) * -1;
+                    break;
+                case 'backup':
+                    speed -= this.backSpeed;
+                    this.velX -= this.acceleration * Math.sin(this.rotation * (Math.PI/180));
+                    this.velY -= this.acceleration * Math.cos(this.rotation * (Math.PI/180)) * -1;
+                    break;
+                case 'left':
+                    if (speed > 0.3) {
+                        this.rotation -= this.rotationStep * (speed / this.maxSpeed);
+                    }
+                    break;
+                case 'right':
+                    if (speed > 0.3) {
+                        this.rotation += this.rotationStep * (speed / this.maxSpeed);
+                    }
+                    break;
+                default:
+                // do nothing
+            }
         }
     }
 
@@ -344,10 +393,25 @@ Car.prototype.draw = function (ctx) {
     drawCircle(this.x, this.y, this.radius);
 };
 
+Car.prototype.reset = function () {
+    this.velX = 0;
+    this.velY = 0;
+    if (this.player_num === 1) {
+        this.rotation = 90;
+        this.x = player1_start_x;
+        this.y = player1_start_y;
+    } else { //player_num === 2
+        this.rotation = 270;
+        this.x = player2_start_x;
+        this.y = player2_start_y;
+    }
+    
+};
+
 function Puck(game, x, y) {
     Entity.call(this, game, x, y);
     this.img_offset = 23;
-    this.velX = -0.8;
+    this.velX = 0;
     this.velY = 0;
     this.collided = 0;
     this.drag = -.15;
@@ -381,6 +445,7 @@ function findAngle(x, y) {
 }
 
 Puck.prototype.update = function () {
+    if (!this.game.running) return;
     this.x += this.velX + this.drag * this.velX;
     this.y += this.velY + this.drag * this.velY;
     var width = this.game.ctx.canvas.width;
@@ -397,8 +462,9 @@ Puck.prototype.update = function () {
         for (var i = 0, len = this.game.cars.length; i < len; i++) {
             var car = this.game.cars[i];
             if (calcDistance(this, car) < this.radius + car.radius && this.collided === 0) {
-                console.log(i + ": distance: " + calcDistance(this, car));
+                // console.log(i + ": distance: " + calcDistance(this, car));
                 this.doCollision(car);
+                car.bumps++;
                 //break;
             }
         }
@@ -442,7 +508,7 @@ Puck.prototype.doCollision = function (ent) {
 
         return true;
     }
-}
+};
 
 Puck.prototype.draw = function (ctx) {
     ctx.drawImage(ASSET_MANAGER.getAsset(puck_img_path), this.x - this.img_offset, this.y - this.img_offset);
@@ -454,11 +520,88 @@ Puck.prototype.draw = function (ctx) {
     drawCircle(this.x, this.y, this.radius, color);
 };
 
+Puck.prototype.reset = function () {
+    this.x = canvas_width/2;
+    this.y = canvas_height/2;
+    this.velX = 0;
+    this.velY = 0; 
+};
+
+function ScoreBoard(game, x, y, clock, frame, score1, score2) {
+    this.clock = clock;
+    this.frame = frame;
+    this.score1 = score1;
+    this.score2 = score2;
+    this.elapsedTime = 0;
+    Entity.call(this, game, x, y);
+}
+
+ScoreBoard.prototype = new Entity();
+ScoreBoard.prototype.constructor = ScoreBoard;
+
+ScoreBoard.prototype.update = function () {
+    if (!this.game.running) return;
+    
+    this.elapsedTime += this.game.clockTick;
+    
+    if (this.elapsedTime >= 1) {
+        this.game.timeRemaining--;
+        this.elapsedTime = 0;
+    }
+    
+    var minutes = Math.floor(this.game.timeRemaining / 60);
+    var seconds = this.game.timeRemaining % 60;
+    
+    this.clock.innerHTML =  minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+    this.frame.innerHTML = "PERIOD: " + this.game.period + "/" + NUM_PERIODS;
+    this.score1.innerHTML = this.game.cars[0].bumps;
+    this.score2.innerHTML = this.game.cars[1].bumps;
+
+    if (this.game.timeRemaining == 0) this.game.reset();
+
+};
+
+function PlayGame(game, x, y) {
+    Entity.call(this, game, x, y);
+}
+
+PlayGame.prototype = new Entity();
+PlayGame.prototype.constructor = PlayGame;
+
+PlayGame.prototype.reset = function () {
+    this.game.running = false;
+    this.game.timeRemaining = PERIOD_LENGTH;
+    this.game.period++;
+};
+
+PlayGame.prototype.update = function () {
+    if (this.game.click && this.game.timeRemaining > 0 && this.game.period <= NUM_PERIODS) this.game.running = true;
+};
+
+PlayGame.prototype.draw = function (ctx) {
+    if (!this.game.running) {
+        ctx.font = "24pt Impact";
+        ctx.fillStyle = "white";
+        if (this.game.mouse) { ctx.fillStyle = "pink"; }
+        if (this.game.period <= 3) {
+            ctx.fillText("Click to GET BUMPIN'!", this.x, this.y);
+        } else {
+            if (this.game.cars[0].bumps > this.game.cars[1].bumps) {
+                ctx.fillText("Player 1 is the WINNER!", this.x-15, this.y);
+            } else if (this.game.cars[0].bumps < this.game.cars[1].bumps) {
+                ctx.fillText("Player 2 is the WINNER!", this.x-15, this.y);
+            } else {
+                ctx.fillText("TIE GAME!!!", this.x+62, this.y);
+            }
+        }
+    }
+};
+
 // the "main" code begins here
 var ASSET_MANAGER = new AssetManager();
 
 ASSET_MANAGER.queueDownload(car1_img_path);
-// ASSET_MANAGER.queueDownload(car2_img_path);
+ASSET_MANAGER.queueDownload(car2_img_path);
 ASSET_MANAGER.queueDownload(puck_img_path);
 
 ASSET_MANAGER.downloadAll(function () {
@@ -466,17 +609,33 @@ ASSET_MANAGER.downloadAll(function () {
     var canvas = document.getElementById('gameWorld');
     var ctx = canvas.getContext('2d');
     
-    canvas.tabIndex = 1;
     var gameEngine = new GameEngine();
-    // var gameboard = new GameBoard();
+    
+    gameEngine.cars = [];
+    gameEngine.puck = null;
+    gameEngine.timeRemaining = PERIOD_LENGTH;
+    gameEngine.period = 1;
+    gameEngine.running = false;
+    
     var puck = new Puck(gameEngine, canvas_width / 2, canvas_height / 2);
+    
     var player1 = new Car(gameEngine, player1_start_x, player1_start_y, 1, car1_img_path);
-    // var player2 = new Car(gameEngine, player2_start_x, player2_start_y, 2, car2_img_path);
+    player1.rotation = 90;
+    var player2 = new Car(gameEngine, player2_start_x, player2_start_y, 2, car2_img_path);
+    player2.rotation = 270;
+    
+    var pg = new PlayGame(gameEngine, 484, 235);
+    
+    var sb = new ScoreBoard(gameEngine, 0, 0, document.getElementById('clock'), document.getElementById('period'), 
+                                              document.getElementById('score1'), document.getElementById('score2'));
+    
 	gameEngine.addEntity(puck);
     gameEngine.addEntity(player1);
-    // gameEngine.addEntity(player2);
+    gameEngine.addEntity(player2);
+    gameEngine.addEntity(pg);
+    gameEngine.addEntity(sb);
     gameEngine.cars[0] = player1;
- 
+    gameEngine.cars[1] = player2;
     gameEngine.init(ctx);
     gameEngine.start();
     ctx.canvas.focus();
