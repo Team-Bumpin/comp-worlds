@@ -16,5 +16,5 @@ Player 2
 
 Up arrow = accelerate
 Down arrow = backup
-Right arrow = left
+Left arrow = left
 Right arrow = right
