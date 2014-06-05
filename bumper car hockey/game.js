@@ -22,9 +22,15 @@ var accel_key_p2 = 38;  // Up arrow
 var backup_key_p2 = 40; // Down arrow
 var left_key_p2 = 37;   // Left arrow
 var right_key_p2 = 39;  // Right arrow
-var COLLISION_COOLDOWN = 5;
+var COLLISION_COOLDOWN = 1;
 var NUM_PERIODS = 3;
 var PERIOD_LENGTH = 120; // seconds
+var DRAW_DEBUG = true;
+var TICK_FACTOR = 40;
+var ARENA_LEFT = 133;
+var ARENA_RIGHT = 1193;
+var ARENA_TOP = 56;
+var ARENA_BOTTOM = 940;
 
 window.requestAnimFrame = (function () {
 	return window.requestAnimationFrame ||
@@ -45,7 +51,7 @@ function AssetManager() {
 }
 
 AssetManager.prototype.queueDownload = function (path) {
-	console.log(path.toString());
+	//console.log(path.toString());
     this.downloadQueue.push(path);
 };
 
@@ -60,7 +66,7 @@ AssetManager.prototype.downloadAll = function (callback) {
         var img = new Image();
         var that = this;
         img.addEventListener("load", function () {
-            console.log("dun: " + this.src.toString());
+            //console.log("dun: " + this.src.toString());
             that.successCount += 1;
             if (that.isDone()) { callback(); }
         });
@@ -102,6 +108,9 @@ function GameEngine() {
     this.keydown = null;
     this.surfaceWidth = null;
     this.surfaceHeight = null;
+    this.cars = [];
+    this.puck = null;
+    this.bumpers = [];
 }
 
 GameEngine.prototype.init = function (ctx) {
@@ -110,11 +119,11 @@ GameEngine.prototype.init = function (ctx) {
     this.surfaceHeight = this.ctx.canvas.height;
     this.startInput();
     this.timer = new Timer();
-    console.log('game initialized');
+    console.log('Game initialized.');
 };
 
 GameEngine.prototype.start = function () {
-    console.log("starting game");
+    console.log("Starting game.");
     var that = this;
     // that.countdown(PERIOD_LENGTH);
     (function gameLoop() {
@@ -124,7 +133,7 @@ GameEngine.prototype.start = function () {
 };
 
 GameEngine.prototype.startInput = function () {
-    console.log('Starting input');
+    console.log('Starting input.');
 
     var getXandY = function (e) {
         var x = e.clientX - that.ctx.canvas.getBoundingClientRect().left;
@@ -222,17 +231,23 @@ GameEngine.prototype.startInput = function () {
         		// do nothing
         }
     }, false);
-    console.log('Input started');
+    console.log('Input started.');
 };
 
 GameEngine.prototype.addEntity = function (entity) {
-    console.log('added entity');
+    console.log('Added entity.');
     this.entities.push(entity);
 };
 
 GameEngine.prototype.draw = function (drawCallback) {
     this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
     this.ctx.save();
+    if (DRAW_DEBUG) {
+        //Draw arena outline
+        this.ctx.strokeStyle = "green";
+        this.ctx.strokeRect(ARENA_LEFT, ARENA_TOP, ARENA_RIGHT - ARENA_LEFT, ARENA_BOTTOM - ARENA_TOP);
+    }
+
     for (var i = 0; i < this.entities.length; i++) {
         this.entities[i].draw(this.ctx);
     }
@@ -245,20 +260,56 @@ GameEngine.prototype.draw = function (drawCallback) {
 GameEngine.prototype.update = function () {
     var entitiesCount = this.entities.length;
 	for (var i = 0; i < entitiesCount; i++) {
-        var entity = this.entities[i];
-        if (!entity.removeFromWorld) {
-            entity.update();
+        var ent = this.entities[i];
+        if (! (ent instanceof Car || ent instanceof Puck || ent instanceof Bumper)) {
+            ent.update();
         }
     }
-    for (var i = this.entities.length - 1; i >= 0; --i) {
-        if (this.entities[i].removeFromWorld) {
-            this.entities.splice(i, 1);
+
+    // Move cars
+//    for (var i = 0; i < this.cars.length; i++) {
+//        this.cars[i].update();
+//    }
+    // Collide cars w/each other
+    for (var i = 0; i < this.cars.length; i++) {
+        this.cars[i].update();
+    }
+    for (var i = 0; i < this.cars.length; i++) {
+        for (var j = 0; j < this.cars.length; j++) {
+            if (i === j) { continue; }
+            this.cars[i].doCollision(this.cars[j]);
         }
     }
+    for (var i = 0; i < this.cars.length; i++) {
+        var c = this.cars[i];
+        if (c.newVelX !== null && c.newVelY !== null) {
+            c.velX = c.newVelX;
+            c.velY = c.newVelY;
+        }
+        c.newVelX = c.newVelY = null;
+    }
+    // Collide cars w/puck
+    for (var i = 0; i < this.cars.length; i++) {
+        this.cars[i].doCollision(this.puck);
+    }
+    // Collide cars w/bumpers
+    for (var i = 0; i < this.cars.length; i++) {
+        for (var j = 0; j < this.bumpers.length; j++) {
+            this.cars[i].doCollision(this.bumpers[j]);
+        }
+    }
+    // Collide puck w/bumpers
+    for (var i = 0; i < this.bumpers.length; i++) {
+        this.puck.doCollision(this.bumpers[i]);
+    }
+    // Move puck
+    this.puck.update();
+
 };
 
 GameEngine.prototype.loop = function () {
     this.clockTick = this.timer.tick();
+    this.gameDelta = this.clockTick * TICK_FACTOR;
     this.update();
     this.draw();
     this.click = null;
@@ -298,7 +349,7 @@ Entity.prototype.draw = function (ctx) {
 //////////////////////////////
 //// START BUMPIN CLASSES ////
 
-function drawCircle(x, y, radius, color) {
+function drawCircle(ctx, x, y, radius, color) {
     ctx.beginPath();
     ctx.strokeStyle = color;
     ctx.arc(x, y, radius, 0, Math.PI * 2, false);
@@ -311,16 +362,20 @@ function Car(game, x, y, player_num, img_path) {
 	this.img_path = img_path;
 	this.velX = 0;
 	this.velY = 0;
+    this.newVelX = null;
+    this.newVelY = null;
 	this.acceleration = 0.4;
 	this.speedDecay = 0.96;
 	this.rotation = 0;
 	this.rotationStep = 4;
 	this.maxSpeed = 8;
 	this.backSpeed = 5;
-    this.radius = 40;
+    this.radius = 32;
     this.mass = 1;
     this.pressedKeys = [];
     this.bumps = 0;
+    this.collided = 0;
+    this.length = 0;
     
     Entity.call(this, game, x, y);
 }
@@ -330,19 +385,20 @@ Car.prototype = new Entity();
 Car.prototype.varructor = Car;
 
 Car.prototype.update = function () {
+    var tick_factor = this.game.gameDelta;
     if (this.game.running) {
-        this.x += this.velX;
-        this.y += this.velY;
+        this.x += this.velX * tick_factor;
+        this.y += this.velY * tick_factor;
     
         var width = this.game.ctx.canvas.width;
         var height = this.game.ctx.canvas.height;
-        if ((this.x + this.radius > width && this.velX > 0) || (this.x - this.radius < 0 && this.velX < 0)) {
+        if ((this.x + this.radius > ARENA_RIGHT && this.velX > 0) || (this.x - this.radius < ARENA_LEFT && this.velX < 0)) {
             this.velX *= -1;
-            this.x += this.velX;
+            this.x += this.velX * tick_factor;
         }
-        if ((this.y + this.radius > height && this.velY > 0) || (this.y - this.radius < 0 && this.velY < 0)) {
+        if ((this.y + this.radius > ARENA_BOTTOM && this.velY > 0) || (this.y - this.radius < ARENA_TOP && this.velY < 0)) {
             this.velY *= -1;
-            this.y += this.velY;
+            this.y += this.velY * tick_factor;
         }
     
         var speed = Math.sqrt(Math.pow(this.velX, 2) + Math.pow(this.velY, 2));
@@ -382,109 +438,111 @@ Car.prototype.update = function () {
             }
         }
     }
-
 };
 
-Car.prototype.draw = function (ctx) {
-    ctx.save();
-	ctx.translate(this.x, this.y);
-	ctx.rotate(this.rotation * (Math.PI/180));
-	ctx.drawImage(ASSET_MANAGER.getAsset(this.img_path), -car_img_x_offset / 2, -car_img_y_offset / 2);
-    ctx.restore();
-    drawCircle(this.x, this.y, this.radius);
-};
-
-Car.prototype.reset = function () {
-    this.velX = 0;
-    this.velY = 0;
-    if (this.player_num === 1) {
-        this.rotation = 90;
-        this.x = player1_start_x;
-        this.y = player1_start_y;
-    } else { //player_num === 2
-        this.rotation = 270;
-        this.x = player2_start_x;
-        this.y = player2_start_y;
-    }
-    
-};
-
-function Puck(game, x, y) {
-    Entity.call(this, game, x, y);
-    this.img_offset = 23;
-    this.velX = 0;
-    this.velY = 0;
-    this.collided = 0;
-    this.drag = -.15;
-    this.radius = 20;
-    this.mass = .5;
-}
-
-Puck.prototype = new Entity();
-
-Puck.prototype.constructor = Puck;
-
-function calcDistance(ent1, ent2) {
-    return Math.sqrt(Math.pow(ent1.x - ent2.x, 2) + Math.pow(ent1.y - ent2.y, 2));
-}
-
-function findAngle(x, y) {
-    var ang;
-    if (x === 0) {
-        ang = Math.PI/2;
-    } else {
-        ang = Math.atan(y/x);
-    }
-    if (x < 0 && y < 0) {
-        ang += Math.PI;
-    } else if (x < 0) {
-        ang += Math.PI;
-    } else if (y < 0) {
-        ang += 2* Math.PI;
-    }
-    return ang;
-}
-
-Puck.prototype.update = function () {
-    if (!this.game.running) return;
-    this.x += this.velX + this.drag * this.velX;
-    this.y += this.velY + this.drag * this.velY;
-    var width = this.game.ctx.canvas.width;
-    var height = this.game.ctx.canvas.height;
-
-    if ((this.x + this.radius > width && this.velX > 0) || (this.x - this.radius < 0 && this.velX < 0)) {
-        this.velX *= -1;
-    }
-    if ((this.y + this.radius > height && this.velY > 0) || (this.y - this.radius < 0 && this.velY < 0)) {
-        this.velY *= -1;
-    }
-
-    if (this.game.cars.length > 0) {
-        for (var i = 0, len = this.game.cars.length; i < len; i++) {
-            var car = this.game.cars[i];
-            if (calcDistance(this, car) < this.radius + car.radius && this.collided === 0) {
-                // console.log(i + ": distance: " + calcDistance(this, car));
-                this.doCollision(car);
-                car.bumps++;
-                //break;
-            }
-        }
+Car.prototype.doCollision = function(ent) {
+    if (ent instanceof Bumper) {
+        //return this.doBumperCollision(ent);
+    } else if (ent instanceof Puck) {
+        return this.doPuckCollision(ent);
+    } else if (ent instanceof Car) {
+        return this.doCarCollision(ent);
     }
 };
 
-Puck.prototype.doCollision = function (ent) {
+Car.prototype.doBumperCollision = function(ent) {
     var distance = calcDistance(this, ent);
     if (distance > this.radius + ent.radius || this.collided > 0) {
         return false;
     } else {
-        this.collided = COLLISION_COOLDOWN;
+        //this.collided = COLLISION_COOLDOWN;
+        var xDiff = this.x - ent.x;
+        var yDiff = this.y - ent.y;
+        var collisionAngle = findAngle(xDiff, yDiff);
 
+        var travelAngle = findAngle(this.velX, this.velY);
+        var travelAngle2 = 0;
+
+        // Check if car is actually traveling into bumper
+        var newColl = collisionAngle - (collisionAngle > Math.PI ? 2 * Math.PI : 0);
+        var newTrav = findAngle(this.velX - ent.velX, this.velY - ent.velY);
+        newTrav = newTrav - (newTrav > Math.PI ? 2 * Math.PI : 0);
+        if (Math.abs(newTrav - newColl) < Math.PI / 2) {
+            console.log("False collision! Coll: " + newColl + " Trav: " + newTrav);
+            return false;
+        }
+
+        var m1 = this.mass;
+        var m2 = ent.mass;
+        var v1 = Math.sqrt(Math.pow(this.velX, 2) + Math.pow(this.velY, 2));
+        var v2 = 0;
+
+        // equations from http://williamecraver.wix.com/elastic-equations
+        var newVelX = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
+            (m1 + m2)) * Math.cos(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.cos(collisionAngle + Math.PI/2);
+        var newVelY = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
+            (m1 + m2)) * Math.sin(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.sin(collisionAngle + Math.PI/2);
+
+        this.velX = newVelX;
+        this.velY = newVelY;
+
+        return true;
+    }
+};
+
+Car.prototype.doBumperCollision2 = function(ent) { // TODO: old func
+    var distance = calcDistance(this, ent);
+    if (distance > this.radius + ent.radius || this.collided > 0) {
+        return false;
+    } else {
+        //this.collided = COLLISION_COOLDOWN;
         var xDiff = this.x - ent.x;
         var yDiff = this.y - ent.y;
         var collisionAngle = findAngle(xDiff, yDiff);
 
         var travelAngle = findAngle(this.velX, this.velY);
         var travelAngle2 = findAngle(ent.velX, ent.velY);
+
+        var m1 = this.mass;
+        var m2 = ent.mass;
+        var v1 = Math.sqrt(Math.pow(this.velX, 2) + Math.pow(this.velY, 2));
+        var v2 = 0;
+
+        // equations from http://williamecraver.wix.com/elastic-equations
+        var newVelX = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
+            (m1 + m2)) * Math.cos(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.cos(collisionAngle + Math.PI/2);
+        var newVelY = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
+            (m1 + m2)) * Math.sin(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.sin(collisionAngle + Math.PI/2);
+
+        this.velX = newVelX;
+        this.velY = newVelY;
+
+        return true;
+    }
+};
+
+Car.prototype.doPuckCollision = function(ent) {
+    var distance = calcDistance(this, ent);
+    if (distance > this.radius + ent.radius || this.collided > 0) {
+        return false;
+    } else {
+        //this.collided = COLLISION_COOLDOWN;
+        var xDiff = this.x - ent.x;
+        var yDiff = this.y - ent.y;
+        var collisionAngle = findAngle(xDiff, yDiff);
+
+        var travelAngle = findAngle(this.velX, this.velY);
+        var travelAngle2 = findAngle(ent.velX, ent.velY);
+        var travelDelta = findAngle(this.velX - ent.velX, this.velY - ent.velY);
+
+        // Check if car/puck are actually traveling into each other
+        var newColl = collisionAngle - (collisionAngle > Math.PI ? 2 * Math.PI : 0);
+        var newTrav = findAngle(this.velX - ent.velX, this.velY - ent.velY);
+        newTrav = newTrav - (newTrav > Math.PI ? 2 * Math.PI : 0);
+        if (Math.abs(newTrav - newColl) < Math.PI / 2) {
+            console.log("False collision! Coll: " + newColl + " Trav: " + newTrav);
+            return false;
+        }
 
         var m1 = this.mass;
         var m2 = ent.mass;
@@ -511,14 +569,240 @@ Puck.prototype.doCollision = function (ent) {
     }
 };
 
+Car.prototype.doCarCollision = function(ent) {
+    var distance = calcDistance(this, ent);
+    if (distance > this.radius + ent.radius || this.collided > 0) {
+        return false;
+    } else {
+        //this.collided = COLLISION_COOLDOWN;
+        var xDiff = this.x - ent.x;
+        var yDiff = this.y - ent.y;
+        var collisionAngle = findAngle(xDiff, yDiff);
+
+        var travelAngle = findAngle(this.velX, this.velY);
+        var travelAngle2 = findAngle(ent.velX, ent.velY);
+
+        var travelDelta = findAngle(this.velX - ent.velX, this.velY - ent.velY);
+
+        // Check if cars are actually traveling into each other
+        var newColl = collisionAngle - (collisionAngle > Math.PI ? 2 * Math.PI : 0);
+        var newTrav = findAngle(this.velX - ent.velX, this.velY - ent.velY);
+        newTrav = newTrav - (newTrav > Math.PI ? 2 * Math.PI : 0);
+        if (Math.abs(newTrav - newColl) < Math.PI / 2) {
+            console.log("False collision! Coll: " + newColl + " Trav: " + newTrav);
+            return false;
+        }
+
+        var m1 = this.mass;
+        var m2 = ent.mass;
+        var v1 = Math.sqrt(Math.pow(this.velX, 2) + Math.pow(this.velY, 2));
+        var v2 = Math.sqrt(Math.pow(ent.velX, 2) + Math.pow(ent.velY, 2));
+
+        // equations from http://williamecraver.wix.com/elastic-equations
+        var newVelX = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
+            (m1 + m2)) * Math.cos(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.cos(collisionAngle + Math.PI/2);
+        var newVelY = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
+            (m1 + m2)) * Math.sin(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.sin(collisionAngle + Math.PI/2);
+
+        this.newVelX = newVelX;
+        this.newVelY = newVelY;
+
+        return true;
+    }
+};
+
+Car.prototype.draw = function (ctx) {
+    // NOTE: everything is rotated 90 degrees here (x is y, y is x)
+    ctx.save();
+	ctx.translate(this.x, this.y);
+	ctx.rotate(this.rotation * (Math.PI/180));
+	ctx.drawImage(ASSET_MANAGER.getAsset(this.img_path), -1 * this.radius, -1 * this.radius - this.length / 2, this.radius * 2, this.length + this.radius * 2);
+    if (DRAW_DEBUG) {
+        var color = "green";
+        drawCircle(ctx, 0, this.length/2, this.radius, color);
+        drawCircle(ctx, 0, -1 * this.length/2, this.radius, color);
+        ctx.strokeStyle = color;
+        ctx.strokeRect(-1 * this.radius, -1 * this.length / 2, this.radius*2, this.length);
+    }
+    ctx.restore();
+};
+
+Car.prototype.reset = function () {
+    this.velX = 0;
+    this.velY = 0;
+    if (this.player_num === 1) {
+        this.rotation = 90;
+        this.x = player1_start_x;
+        this.y = player1_start_y;
+    } else { //player_num === 2
+        this.rotation = 270;
+        this.x = player2_start_x;
+        this.y = player2_start_y;
+    }
+    
+};
+
+function Puck(game, x, y) {
+    Entity.call(this, game, x, y);
+    this.img_offset = 23;
+    this.velX = 0;
+    this.velY = 0;
+    this.newVelX = 0;
+    this.newVelY = 0;
+    this.collided = 0;
+    this.drag = -.15;
+    this.radius = 20;
+    this.mass = .5;
+}
+
+Puck.prototype = new Entity();
+
+Puck.prototype.constructor = Puck;
+
+function calcDistance(ent1, ent2) {
+    return Math.sqrt(Math.pow(ent1.x - ent2.x, 2) + Math.pow(ent1.y - ent2.y, 2));
+}
+
+function findAngle2(x, y) { // TODO: bad func
+    var ang;
+    if (x === 0) {
+        ang = y >= 0 ? Math.PI/2 : -1 * Math.PI/2;
+    } else {
+        ang = Math.atan(y/x);
+    }
+    if (x < 0 && y < 0) {
+        ang -= Math.PI;
+    } else if (x < 0) {
+        ang += Math.PI;
+    }
+
+    return ang;
+}
+
+function findAngle(x, y) { // TODO: old func
+    var ang;
+    if (x === 0) {
+        ang = Math.PI/2;
+    } else {
+        ang = Math.atan(y/x);
+    }
+    if (x < 0 && y < 0) {
+        ang += Math.PI;
+    } else if (x < 0) {
+        ang += Math.PI;
+    } else if (y < 0) {
+        ang += 2* Math.PI;
+    }
+    return ang;
+}
+
+Puck.prototype.update = function () {
+    var tick_factor = this.game.gameDelta;
+
+    if (!this.game.running) return;
+    this.x += (this.velX + this.drag * this.velX) * tick_factor;
+    this.y += (this.velY + this.drag * this.velY) * tick_factor;
+    var width = this.game.ctx.canvas.width;
+    var height = this.game.ctx.canvas.height;
+
+    if ((this.x + this.radius > ARENA_RIGHT && this.velX > 0) || (this.x - this.radius < ARENA_LEFT && this.velX < 0)) {
+        this.velX *= -1;
+    }
+    if ((this.y + this.radius > ARENA_BOTTOM && this.velY > 0) || (this.y - this.radius < ARENA_TOP && this.velY < 0)) {
+        this.velY *= -1;
+    }
+
+    this.collided = Math.max(this.collided - 1, 0);
+};
+
+Puck.prototype.doCollision = function (ent) {
+    if (ent instanceof Bumper) {
+        //return this.doBumperCollision(ent);
+    }
+};
+
+Puck.prototype.doBumperCollision = function (ent) {
+    var distance = calcDistance(this, ent);
+    if (distance > this.radius + ent.radius || this.collided > 0) {
+        return false;
+    } else {
+        //this.collided = COLLISION_COOLDOWN;
+
+        var xDiff = this.x - ent.x;
+        var yDiff = this.y - ent.y;
+        var collisionAngle = findAngle(xDiff, yDiff);
+
+        var travelAngle = findAngle(this.velX, this.velY);
+        var travelAngle2 = 0;
+
+        // Check if car is actually traveling into bumper
+        var newColl = collisionAngle - (collisionAngle > Math.PI ? 2 * Math.PI : 0);
+        var newTrav = findAngle(this.velX - ent.velX, this.velY - ent.velY);
+        newTrav = newTrav - (newTrav > Math.PI ? 2 * Math.PI : 0);
+        if (Math.abs(newTrav - newColl) < Math.PI / 2) {
+            console.log("False collision. Coll: " + newColl + " Trav: " + newTrav);
+            return false;
+        }
+
+        var m1 = this.mass;
+        var m2 = ent.mass;
+        var v1 = Math.sqrt(Math.pow(this.velX, 2) + Math.pow(this.velY, 2));
+        var v2 = 0;
+
+        // equations from http://williamecraver.wix.com/elastic-equations
+        var newVelX = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
+            (m1 + m2)) * Math.cos(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.cos(collisionAngle + Math.PI/2);
+        var newVelY = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
+            (m1 + m2)) * Math.sin(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.sin(collisionAngle + Math.PI/2);
+
+        this.velX = newVelX;
+        this.velY = newVelY;
+
+        return true;
+    }
+};
+
+Puck.prototype.doBumperCollision2 = function (ent) { // TODO: old func
+    var distance = calcDistance(this, ent);
+    if (distance > this.radius + ent.radius || this.collided > 0) {
+        return false;
+    } else {
+        //this.collided = COLLISION_COOLDOWN;
+
+        var xDiff = this.x - ent.x;
+        var yDiff = this.y - ent.y;
+        var collisionAngle = findAngle(xDiff, yDiff);
+
+        var travelAngle = findAngle(this.velX, this.velY);
+        var travelAngle2 = 0;
+
+        var m1 = this.mass;
+        var m2 = ent.mass;
+        var v1 = Math.sqrt(Math.pow(this.velX, 2) + Math.pow(this.velY, 2));
+        var v2 = 0;
+
+        // equations from http://williamecraver.wix.com/elastic-equations
+        var newVelX = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
+            (m1 + m2)) * Math.cos(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.cos(collisionAngle + Math.PI/2);
+        var newVelY = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
+            (m1 + m2)) * Math.sin(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.sin(collisionAngle + Math.PI/2);
+
+        this.velX = newVelX;
+        this.velY = newVelY;
+
+        return true;
+    }
+};
+
 Puck.prototype.draw = function (ctx) {
     ctx.drawImage(ASSET_MANAGER.getAsset(puck_img_path), this.x - this.img_offset, this.y - this.img_offset);
-    var color = "green";
-    if (this.collided > 0) {
-        color = "red";
-        this.collided--;
+    if (DRAW_DEBUG) {
+        var color = "green";
+        if (this.collided > 0) {
+            color = "red";
+        }
+        drawCircle(ctx, this.x, this.y, this.radius, color);
     }
-    drawCircle(this.x, this.y, this.radius, color);
 };
 
 Puck.prototype.reset = function () {
@@ -527,6 +811,38 @@ Puck.prototype.reset = function () {
     this.velX = 0;
     this.velY = 0; 
 };
+
+function Bumper(game, x, y) {
+    Entity.call(this, game, x, y);
+    this.radius = 54;
+    this.mass = Number.MAX_VALUE;
+    this.collided = 0;
+    this.velX = 0;
+    this.velY = 0;
+}
+
+Bumper.prototype = new Entity();
+
+Bumper.prototype.constructor = Bumper;
+
+Bumper.prototype.update = function() {
+    this.collided = Math.max(this.collided - 1, 0);
+}
+
+Bumper.prototype.draw = function(ctx) {
+    if (this.collided > 0) {
+        ctx.drawImage(ASSET_MANAGER.getAsset(red_bumper_path), this.x - radius, this.y - radius, this.radius * 2, this.radius * 2);
+    }
+    if (DRAW_DEBUG) {
+        var color = "blue";
+        if (this.collided > 0) {
+            color = "orange";
+        }
+        drawCircle(ctx, this.x, this.y, this.radius, color);
+    }
+}
+
+Bumper.prototype.reset = function() {}
 
 function ScoreBoard(game, x, y, clock, frame, score1, score2) {
     this.clock = clock;
@@ -547,7 +863,7 @@ ScoreBoard.prototype.update = function () {
     
     if (this.elapsedTime >= 1) {
         this.game.timeRemaining--;
-        this.elapsedTime = 0;
+        this.elapsedTime -= 1;
     }
     
     var minutes = Math.floor(this.game.timeRemaining / 60);
@@ -604,16 +920,15 @@ var ASSET_MANAGER = new AssetManager();
 ASSET_MANAGER.queueDownload(car1_img_path);
 ASSET_MANAGER.queueDownload(car2_img_path);
 ASSET_MANAGER.queueDownload(puck_img_path);
+ASSET_MANAGER.queueDownload(red_bumper_path);
 
 ASSET_MANAGER.downloadAll(function () {
-    console.log("starting up da sheild");
+    //console.log("starting up da sheild");
     var canvas = document.getElementById('gameWorld');
     var ctx = canvas.getContext('2d');
     
     var gameEngine = new GameEngine();
-    
-    gameEngine.cars = [];
-    gameEngine.puck = null;
+
     gameEngine.timeRemaining = PERIOD_LENGTH;
     gameEngine.period = 1;
     gameEngine.running = false;
@@ -624,6 +939,11 @@ ASSET_MANAGER.downloadAll(function () {
     player1.rotation = 90;
     var player2 = new Car(gameEngine, player2_start_x, player2_start_y, 2, car2_img_path);
     player2.rotation = 270;
+
+    var bumper1 = new Bumper(gameEngine, 410, 315);
+    var bumper2 = new Bumper(gameEngine, 412, 654);
+    var bumper3 = new Bumper(gameEngine, 897, 317);
+    var bumper4 = new Bumper(gameEngine, 902, 654);
     
     var pg = new PlayGame(gameEngine, 484, 235);
     
@@ -633,10 +953,19 @@ ASSET_MANAGER.downloadAll(function () {
 	gameEngine.addEntity(puck);
     gameEngine.addEntity(player1);
     gameEngine.addEntity(player2);
+    gameEngine.addEntity(bumper1);
+    gameEngine.addEntity(bumper2);
+    gameEngine.addEntity(bumper3);
+    gameEngine.addEntity(bumper4);
     gameEngine.addEntity(pg);
     gameEngine.addEntity(sb);
-    gameEngine.cars[0] = player1;
-    gameEngine.cars[1] = player2;
+    gameEngine.cars.push(player1);
+    gameEngine.cars.push(player2);
+    gameEngine.puck = puck;
+    gameEngine.bumpers.push(bumper1);
+    gameEngine.bumpers.push(bumper2);
+    gameEngine.bumpers.push(bumper3);
+    gameEngine.bumpers.push(bumper4);
     gameEngine.init(ctx);
     gameEngine.start();
     ctx.canvas.focus();
