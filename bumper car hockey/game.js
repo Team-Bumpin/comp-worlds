@@ -1028,6 +1028,7 @@ ASSET_MANAGER.queueDownload(puck_img_path);
 ASSET_MANAGER.queueDownload(red_bumper_path);
 ASSET_MANAGER.queueDownload(goalie_img_path);
 ASSET_MANAGER.queueDownload(goalie_img_path_hit);
+ASSET_MANAGER.queueDownload(dust_img_path);
 
 ASSET_MANAGER.downloadAll(function () {
     //console.log("starting up da sheild");
