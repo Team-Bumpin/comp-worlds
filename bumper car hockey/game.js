@@ -6,6 +6,8 @@ var puck_img_path = "./img/tron_mini_disc.png"; // 46 x 47 pixels
 var red_bumper_path = "./img/red_bumper.png";
 var goalie_img_path = "./img/old_disc_orange.png";
 var goalie_img_path_hit = "./img/old_disc_blue.png";
+var dust_img_path = "./img/smoke.png";
+var dust_img_offset = 48;
 var car_img_x_offset = 72;
 var car_img_y_offset = 35;
 var puck_img_offset = 23;
@@ -384,6 +386,70 @@ Entity.prototype.draw = function (ctx) {
     }
 };
 
+// ANIMATION
+function Animation(spriteSheet, frameWidth, frameDuration, loop) {
+    this.spriteSheet = spriteSheet;
+    this.frameWidth = frameWidth;
+    this.frameDuration = frameDuration;
+    this.frameHeight = this.spriteSheet.height;
+    this.totalTime = (this.spriteSheet.width / this.frameWidth) * this.frameDuration;
+    this.elapsedTime = 0;
+    this.loop = loop;
+};
+
+Animation.prototype.drawFrame = function(tick, ctx, x, y, scaleBy) {
+    var scaleBy = scaleBy || 1;
+    this.elapsedTime += tick;
+    if (this.loop) {
+        if (this.isDone()) {
+            this.elapsedTime = 0;
+        }
+    } else if (this.isDone()) {
+        return;
+    }
+    var index = this.currentFrame();
+    var locX = x - (this.frameWidth/2) * scaleBy;
+    var locY = y - (this.frameHeight/2) * scaleBy;
+    ctx.drawImage(this.spriteSheet,
+        index*this.frameWidth, 0, // source from sheet
+        this.frameWidth, this.frameHeight,
+        locX, locY,
+        this.frameWidth*scaleBy,
+        this.frameHeight*scaleBy);
+}
+
+Animation.prototype.currentFrame = function() {
+    return Math.floor(this.elapsedTime / this.frameDuration);
+}
+
+Animation.prototype.isDone = function() {
+    return (this.elapsedTime >= this.totalTime);
+}
+
+function DustCloud(game, x, y) {
+    Entity.call(this, game, x, y);
+    this.sprite = ASSET_MANAGER.getAsset('smoke.png');
+    this.animation = new Animation(this.sprite, 48, .05)
+}
+
+DustCloud.prototype = new Entity();
+DustCloud.prototype.constructor = DustCloud;
+
+DustCloud.prototype.update = function() {
+    Entity.prototype.update.call(this);
+
+    if (this.animation.isDone()) {
+        this.removeFromWorld = true;
+        return;
+    }
+}
+
+DustCloud.prototype.draw = function(ctx) {
+    this.animation.drawFrame(this.game.clockTick, ctx, this.x, this.y, this.ScaleFactor());
+
+    Entity.prototype.draw.call(this, ctx);
+}
+
 //////////////////////////////
 //// START BUMPIN CLASSES ////
 
@@ -760,6 +826,7 @@ Puck.prototype.doBumperCollision = function (ent) {
         this.velY = -newVelY2;
         ent.collided = this.game.timer.wallLastTimestamp;
 
+		//this.game.addEntity(new DustCloud(this.game, this.x, this.y));
         return true;
     }
 };
