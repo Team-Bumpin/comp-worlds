@@ -297,7 +297,15 @@ GameEngine.prototype.update = function () {
 	for (var i = 0; i < entitiesCount; i++) {
         var ent = this.entities[i];
         if (! (ent instanceof Car || ent instanceof Puck)) {
-            ent.update();
+            if (!ent.removeFromWorld) {
+                ent.update();
+            }
+        }
+    }
+
+    for (var i = this.entities.length - 1; i >= 0; --i) {
+        if (this.entities[i].removeFromWorld) {
+            this.entities.splice(i, 1);
         }
     }
 
@@ -428,7 +436,7 @@ Animation.prototype.isDone = function() {
 
 function DustCloud(game, x, y) {
     Entity.call(this, game, x, y);
-    this.sprite = ASSET_MANAGER.getAsset('smoke.png');
+    this.sprite = ASSET_MANAGER.getAsset(dust_img_path);
     this.animation = new Animation(this.sprite, 48, .05)
 }
 
@@ -445,7 +453,7 @@ DustCloud.prototype.update = function() {
 }
 
 DustCloud.prototype.draw = function(ctx) {
-    this.animation.drawFrame(this.game.clockTick, ctx, this.x, this.y, this.ScaleFactor());
+    this.animation.drawFrame(this.game.clockTick, ctx, this.x, this.y);
 
     Entity.prototype.draw.call(this, ctx);
 }
@@ -826,7 +834,7 @@ Puck.prototype.doBumperCollision = function (ent) {
         this.velY = -newVelY2;
         ent.collided = this.game.timer.wallLastTimestamp;
 
-		//this.game.addEntity(new DustCloud(this.game, this.x, this.y));
+		this.game.addEntity(new DustCloud(this.game, this.x, this.y));
         return true;
     }
 };
