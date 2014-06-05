@@ -3,8 +3,10 @@
 var car1_img_path = "./img/blue_tiny.png"; // 142 x 73 pixels
 var car2_img_path = "./img/red_tiny.png"; // 146 x 67 pixels
 var puck_img_path = "./img/tron_mini_disc.png"; // 46 x 47 pixels
+var puck_img_path_lit = "./img/tron_mini_disc_lit.png"; // 46 x 47 pixels
 var red_bumper_path = "./img/red_bumper.png";
 var goalie_img_path = "./img/old_disc_orange.png";
+var goalie_img_path2 = "./img/old_disc_orange3.png";
 var goalie_img_path_hit = "./img/old_disc_blue.png";
 var dust_img_path = "./img/smoke2.png";
 var dust_img_offset = 48;
@@ -28,10 +30,11 @@ var backup_key_p2 = 40; // Down arrow
 var left_key_p2 = 37;   // Left arrow
 var right_key_p2 = 39;  // Right arrow
 
-var SMOKE_COOLDOWN = 6;
+var SMOKE_COOLDOWN = 16;
 
 var COLLISION_COOLDOWN = 1;
-var BUMPER_COOLDOWN = 8;
+var BUMPER_COOLDOWN = 12;
+var PUCK_COOLDOWN = 8;
 
 var NUM_PERIODS = 1;
 var PERIOD_LENGTH = 60; // seconds
@@ -57,12 +60,12 @@ var BUMPER_MASS = 1;
 var GOALIE_MASS = 0.7;
 
 var GOALIES_ENABLED = true;
-var GOALIES_REACTION = 80;
-var GOALIES_MAX_SPEED = 0.8;
+var GOALIES_REACTION = 150;
+var GOALIES_MAX_SPEED = 3;
 var GOALIES_TOLERANCE = 2;
-var GOALIES_SPACING = 120;
+var GOALIES_SPACING = 75;
 var GOALIES_RANGE_X = 200;
-var GOALIES_RANGE_Y = 140;
+var GOALIES_RANGE_Y = 80;
 
 window.requestAnimFrame = (function () {
 	return window.requestAnimationFrame ||
@@ -270,7 +273,7 @@ GameEngine.prototype.startInput = function () {
 };
 
 GameEngine.prototype.addEntity = function (entity) {
-    console.log('Added entity.');
+    //console.log('Added entity.');
     this.entities.push(entity);
 };
 
@@ -611,10 +614,9 @@ Car.prototype.doCollision = function(ent) {
 
 Car.prototype.doBumperCollision = function(ent) {
     var distance = calcDistance(this, ent);
-    if (distance > this.radius + ent.radius || this.collided > 0) {
+    if (distance > this.radius + ent.radius) {
         return false;
     } else {
-        //this.collided = COLLISION_COOLDOWN;
         var xDiff = this.x - ent.x;
         var yDiff = this.y - ent.y;
         var collisionAngle = findAngle(xDiff, yDiff);
@@ -627,7 +629,7 @@ Car.prototype.doBumperCollision = function(ent) {
         var newTrav = findAngle(this.velX - ent.velX, this.velY - ent.velY);
         newTrav = newTrav - (newTrav > Math.PI ? 2 * Math.PI : 0);
         if (Math.abs(newTrav - newColl) < Math.PI / 2) {
-            console.log("False collision! Coll: " + newColl + " Trav: " + newTrav);
+            //console.log("False collision! Coll: " + newColl + " Trav: " + newTrav);
             return false;
         }
 
@@ -655,10 +657,9 @@ Car.prototype.doBumperCollision = function(ent) {
 
 Car.prototype.doPuckCollision = function(ent) {
     var distance = calcDistance(this, ent);
-    if (distance > this.radius + ent.radius || this.collided > 0) {
+    if (distance > this.radius + ent.radius) {
         return false;
     } else {
-        //this.collided = COLLISION_COOLDOWN;
         var xDiff = this.x - ent.x;
         var yDiff = this.y - ent.y;
         var collisionAngle = findAngle(xDiff, yDiff);
@@ -672,7 +673,7 @@ Car.prototype.doPuckCollision = function(ent) {
         var newTrav = findAngle(this.velX - ent.velX, this.velY - ent.velY);
         newTrav = newTrav - (newTrav > Math.PI ? 2 * Math.PI : 0);
         if (Math.abs(newTrav - newColl) < Math.PI / 2) {
-            console.log("False collision! Coll: " + newColl + " Trav: " + newTrav);
+            //console.log("False collision! Coll: " + newColl + " Trav: " + newTrav);
             return false;
         }
 
@@ -697,7 +698,8 @@ Car.prototype.doPuckCollision = function(ent) {
         ent.velX = newVelX2;
         ent.velY = newVelY2;
 
-        this.game.doSmoke(this.x - xDiff/2, this.y - yDiff/2);
+        //this.game.doSmoke(this.x - xDiff/2, this.y - yDiff/2);
+        ent.collided = this.game.timer.wallLastTimestamp;
 
         return true;
     }
@@ -705,10 +707,9 @@ Car.prototype.doPuckCollision = function(ent) {
 
 Car.prototype.doCarCollision = function(ent) {
     var distance = calcDistance(this, ent);
-    if (distance > this.radius + ent.radius || this.collided > 0) {
+    if (distance > this.radius + ent.radius) {
         return false;
     } else {
-        //this.collided = COLLISION_COOLDOWN;
         var xDiff = this.x - ent.x;
         var yDiff = this.y - ent.y;
         var collisionAngle = findAngle(xDiff, yDiff);
@@ -723,7 +724,7 @@ Car.prototype.doCarCollision = function(ent) {
         var newTrav = findAngle(this.velX - ent.velX, this.velY - ent.velY);
         newTrav = newTrav - (newTrav > Math.PI ? 2 * Math.PI : 0);
         if (Math.abs(newTrav - newColl) < Math.PI / 2) {
-            console.log("False collision! Coll: " + newColl + " Trav: " + newTrav);
+            //console.log("False collision! Coll: " + newColl + " Trav: " + newTrav);
             return false;
         }
 
@@ -803,18 +804,22 @@ Puck.prototype.update = function () {
     if (this.y < GOAL_TOP || this.y > GOAL_BOTTOM) {
         if (this.x + this.radius > ARENA_RIGHT && this.velX > 0) {
             this.velX *= -1;
-            this.game.doSmoke(this.x + this.radius, this.y);
+            //this.game.doSmoke(this.x + this.radius, this.y);
+            this.collided = this.game.timer.wallLastTimestamp;
         } else if (this.x - this.radius < ARENA_LEFT && this.velX < 0) {
             this.velX *= -1;
-            this.game.doSmoke(this.x - this.radius, this.y);
+            //this.game.doSmoke(this.x - this.radius, this.y);
+            this.collided = this.game.timer.wallLastTimestamp;
         }
     }
     if (this.y + this.radius > ARENA_BOTTOM && this.velY > 0) {
         this.velY *= -1;
-        this.game.doSmoke(this.x, this.y + this.radius);
+        //this.game.doSmoke(this.x, this.y + this.radius);
+        this.collided = this.game.timer.wallLastTimestamp;
     } else if (this.y - this.radius < ARENA_TOP && this.velY < 0) {
         this.velY *= -1;
-        this.game.doSmoke(this.x, this.y - this.radius);
+        //this.game.doSmoke(this.x, this.y - this.radius);
+        this.collided = this.game.timer.wallLastTimestamp;
     }
 
     // GOOOOOOOOAAAAAAAAAAAAALLLLLLLLLLLLL
@@ -835,11 +840,9 @@ Puck.prototype.doCollision = function (ent) {
 
 Puck.prototype.doBumperCollision = function (ent) {
     var distance = calcDistance(this, ent);
-    if (distance > this.radius + ent.radius || this.collided > 0) {
+    if (distance > this.radius + ent.radius) {
         return false;
     } else {
-        //this.collided = COLLISION_COOLDOWN;
-
         var xDiff = this.x - ent.x;
         var yDiff = this.y - ent.y;
         var collisionAngle = findAngle(xDiff, yDiff);
@@ -852,7 +855,7 @@ Puck.prototype.doBumperCollision = function (ent) {
         var newTrav = findAngle(this.velX - ent.velX, this.velY - ent.velY);
         newTrav = newTrav - (newTrav > Math.PI ? 2 * Math.PI : 0);
         if (Math.abs(newTrav - newColl) < Math.PI / 2) {
-            console.log("False collision. Coll: " + newColl + " Trav: " + newTrav);
+            //console.log("False collision. Coll: " + newColl + " Trav: " + newTrav);
             return false;
         }
 
@@ -870,15 +873,20 @@ Puck.prototype.doBumperCollision = function (ent) {
         this.velX = -newVelX2;
         this.velY = -newVelY2;
         ent.collided = this.game.timer.wallLastTimestamp;
+        this.collided = this.game.timer.wallLastTimestamp;
 
-        this.game.doSmoke(this.x - xDiff/2, this.y - yDiff/2);
+        //this.game.doSmoke(this.x - xDiff/2, this.y - yDiff/2);
 
         return true;
     }
 };
 
 Puck.prototype.draw = function (ctx) {
-    ctx.drawImage(ASSET_MANAGER.getAsset(puck_img_path), this.x - this.radius - 4, this.y - this.radius - 2, this.radius * 2 + 8, this.radius * 2 + 2);
+    if (this.game.timer.wallLastTimestamp - this.collided < PUCK_COOLDOWN / 60 * 1000) {
+        ctx.drawImage(ASSET_MANAGER.getAsset(puck_img_path_lit), this.x - this.radius - 4, this.y - this.radius - 2, this.radius * 2 + 8, this.radius * 2 + 2);
+    } else {
+        ctx.drawImage(ASSET_MANAGER.getAsset(puck_img_path), this.x - this.radius - 4, this.y - this.radius - 2, this.radius * 2 + 8, this.radius * 2 + 2);
+    }
     if (DRAW_DEBUG) {
         var color = "green";
         if (this.collided > 0) {
@@ -932,6 +940,7 @@ function Goalie(game, x, y, radius, num) {
     this.mass = GOALIE_MASS;
     this.starty = y;
     this.num = num;
+    //this.moving = 0; // This didn't quite work the way I wanted.
     Bumper.call(this, game, x, y, radius);
 }
 
@@ -947,6 +956,7 @@ Goalie.prototype.update = function () {
 };
 
 Goalie.prototype.trackPuck = function () { // this.x + 180
+    var tick_factor = this.game.gameDelta;
     var puck = this.game.puck;
     var rangeDiff = Math.abs(this.starty - puck.y);
     var yDiff = Math.abs(this.y - puck.y);
@@ -955,8 +965,10 @@ Goalie.prototype.trackPuck = function () { // this.x + 180
         var d = calcDistance(this, puck);
         var react = Math.min(GOALIES_REACTION / d, GOALIES_MAX_SPEED);
         var react = this.y > puck.y ? -1 * react : react;
+        var react = react * tick_factor;
 
         this.y = Math.max(this.starty - GOALIES_RANGE_Y, Math.min(this.starty + GOALIES_RANGE_Y, this.y + react));
+        //this.moving++;
     }
 };
 
@@ -964,7 +976,11 @@ Goalie.prototype.draw = function () {
     if (this.game.timer.wallLastTimestamp - this.collided < BUMPER_COOLDOWN / 60 * 1000) {
         ctx.drawImage(ASSET_MANAGER.getAsset(goalie_img_path_hit), this.x - this.radius - 1, this.y - this.radius - 1, this.radius * 2 + 2, this.radius * 2 + 2);
     } else {
-        ctx.drawImage(ASSET_MANAGER.getAsset(goalie_img_path), this.x - this.radius -1 , this.y - this.radius - 1, this.radius * 2 + 2, this.radius * 2 + 2);
+//        if (this.moving % 12 > 5) {
+//            ctx.drawImage(ASSET_MANAGER.getAsset(goalie_img_path2), this.x - this.radius -1 , this.y - this.radius - 1, this.radius * 2 + 2, this.radius * 2 + 2);
+//        } else {
+            ctx.drawImage(ASSET_MANAGER.getAsset(goalie_img_path), this.x - this.radius -1 , this.y - this.radius - 1, this.radius * 2 + 2, this.radius * 2 + 2);
+//        }
     }
     if (DRAW_DEBUG) {
         var color = "orange";
@@ -1071,8 +1087,10 @@ var ASSET_MANAGER = new AssetManager();
 ASSET_MANAGER.queueDownload(car1_img_path);
 ASSET_MANAGER.queueDownload(car2_img_path);
 ASSET_MANAGER.queueDownload(puck_img_path);
+ASSET_MANAGER.queueDownload(puck_img_path_lit);
 ASSET_MANAGER.queueDownload(red_bumper_path);
 ASSET_MANAGER.queueDownload(goalie_img_path);
+//ASSET_MANAGER.queueDownload(goalie_img_path2);
 ASSET_MANAGER.queueDownload(goalie_img_path_hit);
 ASSET_MANAGER.queueDownload(dust_img_path);
 
