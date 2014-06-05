@@ -60,12 +60,12 @@ var BUMPER_MASS = 1;
 var GOALIE_MASS = 0.7;
 
 var GOALIES_ENABLED = true;
-var GOALIES_REACTION = 80;
-var GOALIES_MAX_SPEED = 0.8;
+var GOALIES_REACTION = 150;
+var GOALIES_MAX_SPEED = 3;
 var GOALIES_TOLERANCE = 2;
-var GOALIES_SPACING = 120;
+var GOALIES_SPACING = 75;
 var GOALIES_RANGE_X = 200;
-var GOALIES_RANGE_Y = 140;
+var GOALIES_RANGE_Y = 80;
 
 window.requestAnimFrame = (function () {
 	return window.requestAnimationFrame ||
