@@ -1,9 +1,9 @@
-// This game shell was happily copied from Googler Seth Ladd's "Bad Aliens" game and his Google IO talk in 2011
-"use strict";
+// Parts of this game's shell were shamelessly stolen from Seth Ladd's "Bad Aliens" game and his Google IO talk in 2011
 
 var car1_img_path = "./img/blue_tiny.png"; // 142 x 73 pixels
 var car2_img_path = "./img/red_tiny.png"; // 146 x 67 pixels
 var puck_img_path = "./img/tron_mini_disc.png"; // 46 x 47 pixels
+var red_bumper_path = "./img/red_bumper.png";
 var car_img_x_offset = 72;
 var car_img_y_offset = 35;
 var puck_img_offset = 23;
@@ -25,12 +25,12 @@ var left_key_p2 = 37;   // Left arrow
 var right_key_p2 = 39;  // Right arrow
 
 var COLLISION_COOLDOWN = 1;
-var BUMPER_COOLDOWN = 5;
+var BUMPER_COOLDOWN = 16;
 
 var NUM_PERIODS = 1;
 var PERIOD_LENGTH = 30; // seconds
 
-var DRAW_DEBUG = true;
+var DRAW_DEBUG = false;
 var TICK_FACTOR = 40;
 
 var ARENA_LEFT = 133;
@@ -40,12 +40,12 @@ var ARENA_BOTTOM = 940;
 var GOAL_TOP = 402;
 var GOAL_BOTTOM = 562;
 
-var CAR_RADIUS = 32;
+var CAR_RADIUS = 36;
 var CAR_LENGTH = 0;
 var BUMPER_RADIUS = 54;
-var PUCK_RADIUS = 32;
+var PUCK_RADIUS = 30;
 var CAR_MASS = 1;
-var PUCK_MASS = 0.8;
+var PUCK_MASS = 0.7;
 var BUMPER_MASS = 1;
 
 window.requestAnimFrame = (function () {
@@ -101,7 +101,7 @@ AssetManager.prototype.getAsset = function(path){
 
 function Timer() {
     this.gameTime = 0;
-    this.maxStep = 0.05;
+    this.maxStep = 0.1;
     this.wallLastTimestamp = 0;
 }
 
@@ -283,7 +283,7 @@ GameEngine.prototype.update = function () {
     var entitiesCount = this.entities.length;
 	for (var i = 0; i < entitiesCount; i++) {
         var ent = this.entities[i];
-        if (! (ent instanceof Car || ent instanceof Puck || ent instanceof Bumper)) {
+        if (! (ent instanceof Car || ent instanceof Puck)) {
             ent.update();
         }
     }
@@ -491,7 +491,7 @@ Car.prototype.doBumperCollision = function(ent) {
         var collisionAngle = findAngle(xDiff, yDiff);
 
         var travelAngle = findAngle(this.velX, this.velY);
-        var travelAngle2 = 0;
+        var travelAngle2 = findAngle(-xDiff, -yDiff);
 
         // Check if car is actually traveling into bumper
         var newColl = collisionAngle - (collisionAngle > Math.PI ? 2 * Math.PI : 0);
@@ -503,20 +503,20 @@ Car.prototype.doBumperCollision = function(ent) {
         }
 
         var m1 = this.mass;
-        var m2 = ent.mass;
+        var m2 = this.mass;
         var v1 = Math.sqrt(Math.pow(this.velX, 2) + Math.pow(this.velY, 2));
         var v2 = 0;
 
         // equations from http://williamecraver.wix.com/elastic-equations
-        var newVelX = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
-            (m1 + m2)) * Math.cos(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.cos(collisionAngle + Math.PI/2);
-        var newVelY = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
-            (m1 + m2)) * Math.sin(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.sin(collisionAngle + Math.PI/2);
+        var newVelX2 = ((v2*Math.cos(travelAngle2 - collisionAngle) * (ent.mass - this.mass) + 2*m1*v1*Math.cos(travelAngle - collisionAngle)) /
+            (m1 + m2)) * Math.cos(collisionAngle) + v2*Math.sin(travelAngle2 - collisionAngle)*Math.cos(collisionAngle + Math.PI/2);
+        var newVelY2 = ((v1*Math.cos(travelAngle2 - collisionAngle) * (ent.mass - this.mass) + 2*m1*v1*Math.cos(travelAngle - collisionAngle)) /
+            (m1 + m2)) * Math.sin(collisionAngle) + v2*Math.sin(travelAngle2 - collisionAngle)*Math.sin(collisionAngle + Math.PI/2);
 
-        this.velX = newVelX;
-        this.velY = newVelY;
+        this.velX = -newVelX2;
+        this.velY = -newVelY2;
 
-        ent.collided = BUMPER_COOLDOWN;
+        ent.collided = this.game.timer.wallLastTimestamp;
 
         return true;
     }
@@ -720,7 +720,7 @@ Puck.prototype.doBumperCollision = function (ent) {
         var collisionAngle = findAngle(xDiff, yDiff);
 
         var travelAngle = findAngle(this.velX, this.velY);
-        var travelAngle2 = 0;
+        var travelAngle2 = findAngle(-xDiff, -yDiff); //findAngle(-1 * this.velX, -1 * this.velY);
 
         // Check if car is actually traveling into bumper
         var newColl = collisionAngle - (collisionAngle > Math.PI ? 2 * Math.PI : 0);
@@ -732,26 +732,26 @@ Puck.prototype.doBumperCollision = function (ent) {
         }
 
         var m1 = this.mass;
-        var m2 = ent.mass;
+        var m2 = this.mass;
         var v1 = Math.sqrt(Math.pow(this.velX, 2) + Math.pow(this.velY, 2));
         var v2 = 0;
 
         // equations from http://williamecraver.wix.com/elastic-equations
-        var newVelX = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
-            (m1 + m2)) * Math.cos(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.cos(collisionAngle + Math.PI/2);
-        var newVelY = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
-            (m1 + m2)) * Math.sin(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.sin(collisionAngle + Math.PI/2);
+        var newVelX2 = ((v2*Math.cos(travelAngle2 - collisionAngle) * (ent.mass - this.mass) + 2*m1*v1*Math.cos(travelAngle - collisionAngle)) /
+            (m1 + m2)) * Math.cos(collisionAngle) + v2*Math.sin(travelAngle2 - collisionAngle)*Math.cos(collisionAngle + Math.PI/2);
+        var newVelY2 = ((v1*Math.cos(travelAngle2 - collisionAngle) * (ent.mass - this.mass) + 2*m1*v1*Math.cos(travelAngle - collisionAngle)) /
+            (m1 + m2)) * Math.sin(collisionAngle) + v2*Math.sin(travelAngle2 - collisionAngle)*Math.sin(collisionAngle + Math.PI/2);
 
-        this.velX = newVelX;
-        this.velY = newVelY;
-        ent.collided = BUMPER_COOLDOWN;
+        this.velX = -newVelX2;
+        this.velY = -newVelY2;
+        ent.collided = this.game.timer.wallLastTimestamp;
 
         return true;
     }
 };
 
 Puck.prototype.draw = function (ctx) {
-    ctx.drawImage(ASSET_MANAGER.getAsset(puck_img_path), this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
+    ctx.drawImage(ASSET_MANAGER.getAsset(puck_img_path), this.x - this.radius - 4, this.y - this.radius - 2, this.radius * 2 + 8, this.radius * 2 + 2);
     if (DRAW_DEBUG) {
         var color = "green";
         if (this.collided > 0) {
@@ -782,11 +782,11 @@ Bumper.prototype = new Entity();
 Bumper.prototype.constructor = Bumper;
 
 Bumper.prototype.update = function() {
-    this.collided = Math.max(this.collided - 1, 0);
-}
+    //this.collided = Math.max(this.collided - 1, 0);
+};
 
 Bumper.prototype.draw = function(ctx) {
-    if (this.collided > 0) {
+    if (this.game.timer.wallLastTimestamp - this.collided < 8 / 60 * 1000) {
         ctx.drawImage(ASSET_MANAGER.getAsset(red_bumper_path), this.x - this.radius - 2, this.y - this.radius - 2, this.radius * 2 + 4, this.radius * 2 + 4);
     }
     if (DRAW_DEBUG) {
@@ -796,7 +796,7 @@ Bumper.prototype.draw = function(ctx) {
         }
         drawCircle(ctx, this.x, this.y, this.radius, color);
     }
-}
+};
 
 Bumper.prototype.reset = function() {}
 
