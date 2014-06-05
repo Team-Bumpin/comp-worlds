@@ -408,6 +408,60 @@ Car.prototype.reset = function () {
     
 };
 
+Animation.prototype.drawFrame = function(tick, ctx, x, y, scaleBy) {
+    var scaleBy = scaleBy || 1;
+    this.elapsedTime += tick;
+    if (this.loop) {
+        if (this.isDone()) {
+            this.elapsedTime = 0;
+        }
+    } else if (this.isDone()) {
+        return;
+    }
+    var index = this.currentFrame();
+    var locX = x - (this.frameWidth/2) * scaleBy;
+    var locY = y - (this.frameHeight/2) * scaleBy;
+    ctx.drawImage(this.spriteSheet,
+                  index*this.frameWidth, 0, // source from sheet
+                  this.frameWidth, this.frameHeight,
+                  locX, locY,
+                  this.frameWidth*scaleBy,
+                  this.frameHeight*scaleBy);
+}
+
+Animation.prototype.currentFrame = function() {
+    return Math.floor(this.elapsedTime / this.frameDuration);
+}
+
+Animation.prototype.isDone = function() {
+    return (this.elapsedTime >= this.totalTime);
+}
+
+function DustCloud(game, x, y) {
+	Entity.call(this, game, x, y);
+	this.sprite = ASSET_MANAGER.getAsset('smoke.png');
+	this.animation = new Animation(this.sprite, 48, .05)
+}
+
+DustCloud.prototype = new Entity();
+DustCloud.prototype.constructor = DustCloud;
+
+DustCloud.prototype.update = function() {
+	Entity.prototype.update.call(this);
+	
+	if (this.animation.isDone()) {
+		this.removeFromWorld = true;
+		return;
+	}
+}
+
+DustCloud.prototype.draw = function(ctx) {
+	this.animation.drawFrame(this.game.clockTick, ctx, this.x, this.y, this.ScaleFactor());
+	
+	Entity.prototype.draw.call(this, ctx);
+}
+
+
 function Puck(game, x, y) {
     Entity.call(this, game, x, y);
     this.img_offset = 23;
@@ -507,6 +561,8 @@ Puck.prototype.doCollision = function (ent) {
         ent.velY = newVelY2;
 
         return true;
+        this.game.addEntity(new DustCloud(this.game, this.x, this.y));
+
     }
 };
 
