@@ -6,7 +6,7 @@ var puck_img_path = "./img/tron_mini_disc.png"; // 46 x 47 pixels
 var red_bumper_path = "./img/red_bumper.png";
 var goalie_img_path = "./img/old_disc_orange.png";
 var goalie_img_path_hit = "./img/old_disc_blue.png";
-var dust_img_path = "./img/smoke.png";
+var dust_img_path = "./img/smoke2.png";
 var dust_img_offset = 48;
 var car_img_x_offset = 72;
 var car_img_y_offset = 35;
@@ -28,6 +28,8 @@ var backup_key_p2 = 40; // Down arrow
 var left_key_p2 = 37;   // Left arrow
 var right_key_p2 = 39;  // Right arrow
 
+var SMOKE_COOLDOWN = 6;
+
 var COLLISION_COOLDOWN = 1;
 var BUMPER_COOLDOWN = 8;
 
@@ -46,11 +48,11 @@ var GOAL_BOTTOM = 562;
 
 var CAR_LENGTH = 0;
 var CAR_RADIUS = 36;
-var PUCK_RADIUS = 30;
+var PUCK_RADIUS = 24;
 var BUMPER_RADIUS = 54;
-var GOALIE_RADIUS = 24;
+var GOALIE_RADIUS = 20;
 var CAR_MASS = 1;
-var PUCK_MASS = 0.7;
+var PUCK_MASS = 0.6;
 var BUMPER_MASS = 1;
 var GOALIE_MASS = 0.7;
 
@@ -58,6 +60,7 @@ var GOALIES_ENABLED = true;
 var GOALIES_REACTION = 80;
 var GOALIES_MAX_SPEED = 0.8;
 var GOALIES_TOLERANCE = 2;
+var GOALIES_SPACING = 120;
 var GOALIES_RANGE_X = 200;
 var GOALIES_RANGE_Y = 140;
 
@@ -142,6 +145,7 @@ function GameEngine() {
     this.bumpers = [];
     this.scores = [0, 0];
     this.playGame = null;
+    this.smokeWait = 0;
 }
 
 GameEngine.prototype.init = function (ctx) {
@@ -292,7 +296,15 @@ GameEngine.prototype.draw = function (drawCallback) {
     this.ctx.restore();
 };
 
+GameEngine.prototype.doSmoke = function(x, y) {
+    if (this.smokeWait < 1) {
+        this.addEntity(new DustCloud(this, x, y));
+        this.smokeWait = SMOKE_COOLDOWN;
+    }
+}
+
 GameEngine.prototype.update = function () {
+    this.smokeWait = Math.max(0, this.smokeWait - 1);
     var entitiesCount = this.entities.length;
 	for (var i = 0; i < entitiesCount; i++) {
         var ent = this.entities[i];
@@ -437,7 +449,7 @@ Animation.prototype.isDone = function() {
 function DustCloud(game, x, y) {
     Entity.call(this, game, x, y);
     this.sprite = ASSET_MANAGER.getAsset(dust_img_path);
-    this.animation = new Animation(this.sprite, 48, .05)
+    this.animation = new Animation(this.sprite, 96, .05)
 }
 
 DustCloud.prototype = new Entity();
@@ -529,13 +541,23 @@ Car.prototype.update = function () {
     
         var width = this.game.ctx.canvas.width;
         var height = this.game.ctx.canvas.height;
-        if ((this.x + this.radius > ARENA_RIGHT && this.velX > 0) || (this.x - this.radius < ARENA_LEFT && this.velX < 0)) {
+        if (this.x + this.radius > ARENA_RIGHT && this.velX > 0) {
             this.velX *= -1;
             this.x += this.velX * tick_factor;
+            this.game.doSmoke(this.x + this.length + this.radius, this.y);
+        } else if (this.x - this.radius < ARENA_LEFT && this.velX < 0) {
+            this.velX *= -1;
+            this.x += this.velX * tick_factor;
+            this.game.doSmoke(this.x - this.length - this.radius, this.y);
         }
-        if ((this.y + this.radius > ARENA_BOTTOM && this.velY > 0) || (this.y - this.radius < ARENA_TOP && this.velY < 0)) {
+        if (this.y + this.radius > ARENA_BOTTOM && this.velY > 0) {
             this.velY *= -1;
             this.y += this.velY * tick_factor;
+            this.game.doSmoke(this.x, this.y + this.radius);
+        } else if (this.y - this.radius < ARENA_TOP && this.velY < 0) {
+            this.velY *= -1;
+            this.y += this.velY * tick_factor;
+            this.game.doSmoke(this.x, this.y - this.radius);
         }
     
         var speed = Math.sqrt(Math.pow(this.velX, 2) + Math.pow(this.velY, 2));
@@ -625,6 +647,8 @@ Car.prototype.doBumperCollision = function(ent) {
 
         ent.collided = this.game.timer.wallLastTimestamp;
 
+        this.game.doSmoke(this.x - xDiff/2, this.y - yDiff/2);
+
         return true;
     }
 };
@@ -673,6 +697,8 @@ Car.prototype.doPuckCollision = function(ent) {
         ent.velX = newVelX2;
         ent.velY = newVelY2;
 
+        this.game.doSmoke(this.x - xDiff/2, this.y - yDiff/2);
+
         return true;
     }
 };
@@ -714,6 +740,8 @@ Car.prototype.doCarCollision = function(ent) {
 
         this.newVelX = newVelX;
         this.newVelY = newVelY;
+
+        this.game.doSmoke(this.x - xDiff/2, this.y - yDiff/2);
 
         return true;
     }
@@ -772,12 +800,21 @@ Puck.prototype.update = function () {
     var width = this.game.ctx.canvas.width;
     var height = this.game.ctx.canvas.height;
 
-    if (((this.x + this.radius > ARENA_RIGHT && this.velX > 0) || (this.x - this.radius < ARENA_LEFT && this.velX < 0))
-            && (this.y < GOAL_TOP || this.y > GOAL_BOTTOM)) {
-        this.velX *= -1;
+    if (this.y < GOAL_TOP || this.y > GOAL_BOTTOM) {
+        if (this.x + this.radius > ARENA_RIGHT && this.velX > 0) {
+            this.velX *= -1;
+            this.game.doSmoke(this.x + this.radius, this.y);
+        } else if (this.x - this.radius < ARENA_LEFT && this.velX < 0) {
+            this.velX *= -1;
+            this.game.doSmoke(this.x - this.radius, this.y);
+        }
     }
-    if ((this.y + this.radius > ARENA_BOTTOM && this.velY > 0) || (this.y - this.radius < ARENA_TOP && this.velY < 0)) {
+    if (this.y + this.radius > ARENA_BOTTOM && this.velY > 0) {
         this.velY *= -1;
+        this.game.doSmoke(this.x, this.y + this.radius);
+    } else if (this.y - this.radius < ARENA_TOP && this.velY < 0) {
+        this.velY *= -1;
+        this.game.doSmoke(this.x, this.y - this.radius);
     }
 
     // GOOOOOOOOAAAAAAAAAAAAALLLLLLLLLLLLL
@@ -834,7 +871,8 @@ Puck.prototype.doBumperCollision = function (ent) {
         this.velY = -newVelY2;
         ent.collided = this.game.timer.wallLastTimestamp;
 
-		this.game.addEntity(new DustCloud(this.game, this.x, this.y));
+        this.game.doSmoke(this.x - xDiff/2, this.y - yDiff/2);
+
         return true;
     }
 };
@@ -1097,8 +1135,8 @@ ASSET_MANAGER.downloadAll(function () {
     gameEngine.bumpers.push(goal4);
 
     if (GOALIES_ENABLED) {
-        var goalie1 = new Goalie(gameEngine, ARENA_LEFT + 150, player1_start_y, GOALIE_RADIUS, 1);
-        var goalie2 = new Goalie(gameEngine, ARENA_RIGHT - 150, player1_start_y, GOALIE_RADIUS, 2);
+        var goalie1 = new Goalie(gameEngine, ARENA_LEFT + GOALIES_SPACING, player1_start_y, GOALIE_RADIUS, 1);
+        var goalie2 = new Goalie(gameEngine, ARENA_RIGHT - GOALIES_SPACING, player1_start_y, GOALIE_RADIUS, 2);
         gameEngine.addEntity(goalie1);
         gameEngine.addEntity(goalie2);
         gameEngine.bumpers.push(goalie1);
