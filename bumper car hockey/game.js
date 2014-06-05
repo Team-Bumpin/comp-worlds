@@ -4,6 +4,8 @@ var car1_img_path = "./img/blue_tiny.png"; // 142 x 73 pixels
 var car2_img_path = "./img/red_tiny.png"; // 146 x 67 pixels
 var puck_img_path = "./img/tron_mini_disc.png"; // 46 x 47 pixels
 var red_bumper_path = "./img/red_bumper.png";
+var goalie_img_path = "./img/old_disc_orange.png";
+var goalie_img_path_hit = "./img/old_disc_blue.png";
 var car_img_x_offset = 72;
 var car_img_y_offset = 35;
 var puck_img_offset = 23;
@@ -25,10 +27,10 @@ var left_key_p2 = 37;   // Left arrow
 var right_key_p2 = 39;  // Right arrow
 
 var COLLISION_COOLDOWN = 1;
-var BUMPER_COOLDOWN = 16;
+var BUMPER_COOLDOWN = 8;
 
 var NUM_PERIODS = 1;
-var PERIOD_LENGTH = 30; // seconds
+var PERIOD_LENGTH = 60; // seconds
 
 var DRAW_DEBUG = false;
 var TICK_FACTOR = 40;
@@ -40,13 +42,22 @@ var ARENA_BOTTOM = 940;
 var GOAL_TOP = 402;
 var GOAL_BOTTOM = 562;
 
-var CAR_RADIUS = 36;
 var CAR_LENGTH = 0;
-var BUMPER_RADIUS = 54;
+var CAR_RADIUS = 36;
 var PUCK_RADIUS = 30;
+var BUMPER_RADIUS = 54;
+var GOALIE_RADIUS = 24;
 var CAR_MASS = 1;
 var PUCK_MASS = 0.7;
 var BUMPER_MASS = 1;
+var GOALIE_MASS = 0.7;
+
+var GOALIES_ENABLED = true;
+var GOALIES_REACTION = 80;
+var GOALIES_MAX_SPEED = 0.8;
+var GOALIES_TOLERANCE = 2;
+var GOALIES_RANGE_X = 200;
+var GOALIES_RANGE_Y = 140;
 
 window.requestAnimFrame = (function () {
 	return window.requestAnimationFrame ||
@@ -384,6 +395,28 @@ function drawCircle(ctx, x, y, radius, color) {
     ctx.closePath();
 }
 
+function calcDistance(ent1, ent2) {
+    return Math.sqrt(Math.pow(ent1.x - ent2.x, 2) + Math.pow(ent1.y - ent2.y, 2));
+}
+
+function findAngle(x, y) {
+    var ang;
+    if (x === 0) {
+        ang = Math.PI/2;
+    } else {
+        ang = Math.atan(y/x);
+    }
+    if (x < 0 && y < 0) {
+        ang += Math.PI;
+    } else if (x < 0) {
+        ang += Math.PI;
+    } else if (y < 0) {
+        ang += 2* Math.PI;
+    }
+    return ang;
+}
+
+// CAR
 function Car(game, x, y, player_num, img_path, rotation) {
 	this.player_num = player_num;
 	this.img_path = img_path;
@@ -636,6 +669,8 @@ Car.prototype.reset = function () {
     this.rotation = this.startRotation;
 };
 
+
+// PUCK
 function Puck(game, x, y) {
     Entity.call(this, game, x, y);
     this.startx = x;
@@ -653,27 +688,6 @@ function Puck(game, x, y) {
 Puck.prototype = new Entity();
 
 Puck.prototype.constructor = Puck;
-
-function calcDistance(ent1, ent2) {
-    return Math.sqrt(Math.pow(ent1.x - ent2.x, 2) + Math.pow(ent1.y - ent2.y, 2));
-}
-
-function findAngle(x, y) {
-    var ang;
-    if (x === 0) {
-        ang = Math.PI/2;
-    } else {
-        ang = Math.atan(y/x);
-    }
-    if (x < 0 && y < 0) {
-        ang += Math.PI;
-    } else if (x < 0) {
-        ang += Math.PI;
-    } else if (y < 0) {
-        ang += 2* Math.PI;
-    }
-    return ang;
-}
 
 Puck.prototype.update = function () {
     var tick_factor = this.game.gameDelta;
@@ -768,6 +782,8 @@ Puck.prototype.reset = function () {
     this.velY = 0; 
 };
 
+
+// BUMPER
 function Bumper(game, x, y, radius) {
     Entity.call(this, game, x, y);
     this.radius = radius;
@@ -786,20 +802,71 @@ Bumper.prototype.update = function() {
 };
 
 Bumper.prototype.draw = function(ctx) {
-    if (this.game.timer.wallLastTimestamp - this.collided < 8 / 60 * 1000) {
+    if (this.game.timer.wallLastTimestamp - this.collided < BUMPER_COOLDOWN / 60 * 1000) {
         ctx.drawImage(ASSET_MANAGER.getAsset(red_bumper_path), this.x - this.radius - 2, this.y - this.radius - 2, this.radius * 2 + 4, this.radius * 2 + 4);
     }
     if (DRAW_DEBUG) {
         var color = "blue";
-        if (this.collided > 0) {
-            color = "orange";
-        }
         drawCircle(ctx, this.x, this.y, this.radius, color);
     }
 };
 
 Bumper.prototype.reset = function() {}
 
+
+// GOALIE
+function Goalie(game, x, y, radius, num) {
+    this.mass = GOALIE_MASS;
+    this.starty = y;
+    this.num = num;
+    Bumper.call(this, game, x, y, radius);
+}
+
+Goalie.prototype = new Bumper();
+Goalie.prototype.constructor = Goalie;
+
+Goalie.prototype.update = function () {
+    var puck = this.game.puck;
+
+    if  (Math.abs(this.x - puck.x) < GOALIES_RANGE_X) {
+        this.trackPuck();
+    }
+};
+
+Goalie.prototype.trackPuck = function () { // this.x + 180
+    var puck = this.game.puck;
+    var rangeDiff = Math.abs(this.starty - puck.y);
+    var yDiff = Math.abs(this.y - puck.y);
+
+    if (rangeDiff < GOALIES_RANGE_Y && yDiff > GOALIES_TOLERANCE) {
+        var d = calcDistance(this, puck);
+        var react = Math.min(GOALIES_REACTION / d, GOALIES_MAX_SPEED);
+        var react = this.y > puck.y ? -1 * react : react;
+
+        this.y = Math.max(this.starty - GOALIES_RANGE_Y, Math.min(this.starty + GOALIES_RANGE_Y, this.y + react));
+    }
+};
+
+Goalie.prototype.draw = function () {
+    if (this.game.timer.wallLastTimestamp - this.collided < BUMPER_COOLDOWN / 60 * 1000) {
+        ctx.drawImage(ASSET_MANAGER.getAsset(goalie_img_path_hit), this.x - this.radius - 1, this.y - this.radius - 1, this.radius * 2 + 2, this.radius * 2 + 2);
+    } else {
+        ctx.drawImage(ASSET_MANAGER.getAsset(goalie_img_path), this.x - this.radius -1 , this.y - this.radius - 1, this.radius * 2 + 2, this.radius * 2 + 2);
+    }
+    if (DRAW_DEBUG) {
+        var color = "orange";
+        drawCircle(ctx, this.x, this.y, this.radius, color);
+    }
+};
+
+Goalie.prototype.reset = function () {
+    this.y = this.starty;
+};
+
+
+
+
+/// === Scoring stuff === ///
 function ScoreBoard(game, x, y, clock, frame, score1, score2) {
     this.clock = clock;
     this.frame = frame;
@@ -892,6 +959,8 @@ ASSET_MANAGER.queueDownload(car1_img_path);
 ASSET_MANAGER.queueDownload(car2_img_path);
 ASSET_MANAGER.queueDownload(puck_img_path);
 ASSET_MANAGER.queueDownload(red_bumper_path);
+ASSET_MANAGER.queueDownload(goalie_img_path);
+ASSET_MANAGER.queueDownload(goalie_img_path_hit);
 
 ASSET_MANAGER.downloadAll(function () {
     //console.log("starting up da sheild");
@@ -950,6 +1019,16 @@ ASSET_MANAGER.downloadAll(function () {
     gameEngine.bumpers.push(goal2);
     gameEngine.bumpers.push(goal3);
     gameEngine.bumpers.push(goal4);
+
+    if (GOALIES_ENABLED) {
+        var goalie1 = new Goalie(gameEngine, ARENA_LEFT + 150, player1_start_y, GOALIE_RADIUS, 1);
+        var goalie2 = new Goalie(gameEngine, ARENA_RIGHT - 150, player1_start_y, GOALIE_RADIUS, 2);
+        gameEngine.addEntity(goalie1);
+        gameEngine.addEntity(goalie2);
+        gameEngine.bumpers.push(goalie1);
+        gameEngine.bumpers.push(goalie2);
+    }
+
     gameEngine.init(ctx);
     gameEngine.start();
     ctx.canvas.focus();
