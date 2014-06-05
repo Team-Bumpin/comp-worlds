@@ -10,10 +10,12 @@ var car_img_y_offset = 35;
 var puck_img_offset = 23;
 var canvas_width = 1750;
 var canvas_height = 1000;
-var player1_start_x = 320;
-var player1_start_y = canvas_height / 2;
-var player2_start_x = canvas_width - 620;
-var player2_start_y = canvas_height / 2;
+var player1_start_x = 410;
+var player1_start_y = 480;
+var player2_start_x = 897;
+var player2_start_y = 480;
+var PUCK_START_X = 653;
+var PUCK_START_Y = 480;
 var accel_key_p1 = 87;  // 'W' key
 var backup_key_p1 = 83; // 'S' key
 var left_key_p1 = 65;   // 'A' key
@@ -22,15 +24,30 @@ var accel_key_p2 = 38;  // Up arrow
 var backup_key_p2 = 40; // Down arrow
 var left_key_p2 = 37;   // Left arrow
 var right_key_p2 = 39;  // Right arrow
+
 var COLLISION_COOLDOWN = 1;
-var NUM_PERIODS = 3;
-var PERIOD_LENGTH = 120; // seconds
+var BUMPER_COOLDOWN = 5;
+
+var NUM_PERIODS = 1;
+var PERIOD_LENGTH = 30; // seconds
+
 var DRAW_DEBUG = true;
 var TICK_FACTOR = 40;
+
 var ARENA_LEFT = 133;
 var ARENA_RIGHT = 1193;
 var ARENA_TOP = 56;
 var ARENA_BOTTOM = 940;
+var GOAL_TOP = 402;
+var GOAL_BOTTOM = 562;
+
+var CAR_RADIUS = 32;
+var CAR_LENGTH = 0;
+var BUMPER_RADIUS = 54;
+var PUCK_RADIUS = 32;
+var CAR_MASS = 1;
+var PUCK_MASS = 0.8;
+var BUMPER_MASS = 1;
 
 window.requestAnimFrame = (function () {
 	return window.requestAnimationFrame ||
@@ -111,6 +128,8 @@ function GameEngine() {
     this.cars = [];
     this.puck = null;
     this.bumpers = [];
+    this.scores = [0, 0];
+    this.playGame = null;
 }
 
 GameEngine.prototype.init = function (ctx) {
@@ -243,9 +262,13 @@ GameEngine.prototype.draw = function (drawCallback) {
     this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
     this.ctx.save();
     if (DRAW_DEBUG) {
-        //Draw arena outline
+        // Draw arena outline
         this.ctx.strokeStyle = "green";
         this.ctx.strokeRect(ARENA_LEFT, ARENA_TOP, ARENA_RIGHT - ARENA_LEFT, ARENA_BOTTOM - ARENA_TOP);
+        // Draw goal lines
+        this.ctx.strokeStyle = "yellow";
+        this.ctx.strokeRect(ARENA_LEFT, GOAL_TOP, 2, GOAL_BOTTOM - GOAL_TOP);
+        this.ctx.strokeRect(ARENA_RIGHT, GOAL_TOP, 2, GOAL_BOTTOM - GOAL_TOP);
     }
 
     for (var i = 0; i < this.entities.length; i++) {
@@ -317,6 +340,11 @@ GameEngine.prototype.loop = function () {
     this.keydown = null;
 };
 
+GameEngine.prototype.scoreGoal = function(teamNum) {
+    this.scores[teamNum]++;
+    this.reset();
+};
+
 GameEngine.prototype.reset = function () {
     for (var i = 0; i < this.entities.length; i++) {
         this.entities[i].reset();
@@ -357,7 +385,7 @@ function drawCircle(ctx, x, y, radius, color) {
     ctx.closePath();
 }
 
-function Car(game, x, y, player_num, img_path) {
+function Car(game, x, y, player_num, img_path, rotation) {
 	this.player_num = player_num;
 	this.img_path = img_path;
 	this.velX = 0;
@@ -370,19 +398,22 @@ function Car(game, x, y, player_num, img_path) {
 	this.rotationStep = 4;
 	this.maxSpeed = 8;
 	this.backSpeed = 5;
-    this.radius = 32;
-    this.mass = 1;
+    this.radius = CAR_RADIUS;
+    this.length = CAR_LENGTH;
+    this.mass = CAR_MASS;
     this.pressedKeys = [];
     this.bumps = 0;
     this.collided = 0;
-    this.length = 0;
+    this.startx = x;
+    this.starty = y;
+    this.startRotation = rotation;
     
     Entity.call(this, game, x, y);
 }
 
 Car.prototype = new Entity();
 
-Car.prototype.varructor = Car;
+Car.prototype.constructor = Car;
 
 Car.prototype.update = function () {
     var tick_factor = this.game.gameDelta;
@@ -442,7 +473,7 @@ Car.prototype.update = function () {
 
 Car.prototype.doCollision = function(ent) {
     if (ent instanceof Bumper) {
-        //return this.doBumperCollision(ent);
+        return this.doBumperCollision(ent);
     } else if (ent instanceof Puck) {
         return this.doPuckCollision(ent);
     } else if (ent instanceof Car) {
@@ -486,36 +517,7 @@ Car.prototype.doBumperCollision = function(ent) {
         this.velX = newVelX;
         this.velY = newVelY;
 
-        return true;
-    }
-};
-
-Car.prototype.doBumperCollision2 = function(ent) { // TODO: old func
-    var distance = calcDistance(this, ent);
-    if (distance > this.radius + ent.radius || this.collided > 0) {
-        return false;
-    } else {
-        //this.collided = COLLISION_COOLDOWN;
-        var xDiff = this.x - ent.x;
-        var yDiff = this.y - ent.y;
-        var collisionAngle = findAngle(xDiff, yDiff);
-
-        var travelAngle = findAngle(this.velX, this.velY);
-        var travelAngle2 = findAngle(ent.velX, ent.velY);
-
-        var m1 = this.mass;
-        var m2 = ent.mass;
-        var v1 = Math.sqrt(Math.pow(this.velX, 2) + Math.pow(this.velY, 2));
-        var v2 = 0;
-
-        // equations from http://williamecraver.wix.com/elastic-equations
-        var newVelX = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
-            (m1 + m2)) * Math.cos(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.cos(collisionAngle + Math.PI/2);
-        var newVelY = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
-            (m1 + m2)) * Math.sin(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.sin(collisionAngle + Math.PI/2);
-
-        this.velX = newVelX;
-        this.velY = newVelY;
+        ent.collided = BUMPER_COOLDOWN;
 
         return true;
     }
@@ -630,29 +632,23 @@ Car.prototype.draw = function (ctx) {
 Car.prototype.reset = function () {
     this.velX = 0;
     this.velY = 0;
-    if (this.player_num === 1) {
-        this.rotation = 90;
-        this.x = player1_start_x;
-        this.y = player1_start_y;
-    } else { //player_num === 2
-        this.rotation = 270;
-        this.x = player2_start_x;
-        this.y = player2_start_y;
-    }
-    
+    this.x = this.startx;
+    this.y = this.starty;
+    this.rotation = this.startRotation;
 };
 
 function Puck(game, x, y) {
     Entity.call(this, game, x, y);
-    this.img_offset = 23;
+    this.startx = x;
+    this.starty = y;
     this.velX = 0;
     this.velY = 0;
     this.newVelX = 0;
     this.newVelY = 0;
     this.collided = 0;
     this.drag = -.15;
-    this.radius = 20;
-    this.mass = .5;
+    this.radius = PUCK_RADIUS;
+    this.mass = PUCK_MASS;
 }
 
 Puck.prototype = new Entity();
@@ -663,23 +659,7 @@ function calcDistance(ent1, ent2) {
     return Math.sqrt(Math.pow(ent1.x - ent2.x, 2) + Math.pow(ent1.y - ent2.y, 2));
 }
 
-function findAngle2(x, y) { // TODO: bad func
-    var ang;
-    if (x === 0) {
-        ang = y >= 0 ? Math.PI/2 : -1 * Math.PI/2;
-    } else {
-        ang = Math.atan(y/x);
-    }
-    if (x < 0 && y < 0) {
-        ang -= Math.PI;
-    } else if (x < 0) {
-        ang += Math.PI;
-    }
-
-    return ang;
-}
-
-function findAngle(x, y) { // TODO: old func
+function findAngle(x, y) {
     var ang;
     if (x === 0) {
         ang = Math.PI/2;
@@ -705,11 +685,19 @@ Puck.prototype.update = function () {
     var width = this.game.ctx.canvas.width;
     var height = this.game.ctx.canvas.height;
 
-    if ((this.x + this.radius > ARENA_RIGHT && this.velX > 0) || (this.x - this.radius < ARENA_LEFT && this.velX < 0)) {
+    if (((this.x + this.radius > ARENA_RIGHT && this.velX > 0) || (this.x - this.radius < ARENA_LEFT && this.velX < 0))
+            && (this.y < GOAL_TOP || this.y > GOAL_BOTTOM)) {
         this.velX *= -1;
     }
     if ((this.y + this.radius > ARENA_BOTTOM && this.velY > 0) || (this.y - this.radius < ARENA_TOP && this.velY < 0)) {
         this.velY *= -1;
+    }
+
+    // GOOOOOOOOAAAAAAAAAAAAALLLLLLLLLLLLL
+    if (this.x + this.radius < ARENA_LEFT) {
+        this.game.scoreGoal(1);
+    } else if (this.x - this.radius > ARENA_RIGHT) {
+        this.game.scoreGoal(0);
     }
 
     this.collided = Math.max(this.collided - 1, 0);
@@ -717,7 +705,7 @@ Puck.prototype.update = function () {
 
 Puck.prototype.doCollision = function (ent) {
     if (ent instanceof Bumper) {
-        //return this.doBumperCollision(ent);
+        return this.doBumperCollision(ent);
     }
 };
 
@@ -757,45 +745,14 @@ Puck.prototype.doBumperCollision = function (ent) {
 
         this.velX = newVelX;
         this.velY = newVelY;
-
-        return true;
-    }
-};
-
-Puck.prototype.doBumperCollision2 = function (ent) { // TODO: old func
-    var distance = calcDistance(this, ent);
-    if (distance > this.radius + ent.radius || this.collided > 0) {
-        return false;
-    } else {
-        //this.collided = COLLISION_COOLDOWN;
-
-        var xDiff = this.x - ent.x;
-        var yDiff = this.y - ent.y;
-        var collisionAngle = findAngle(xDiff, yDiff);
-
-        var travelAngle = findAngle(this.velX, this.velY);
-        var travelAngle2 = 0;
-
-        var m1 = this.mass;
-        var m2 = ent.mass;
-        var v1 = Math.sqrt(Math.pow(this.velX, 2) + Math.pow(this.velY, 2));
-        var v2 = 0;
-
-        // equations from http://williamecraver.wix.com/elastic-equations
-        var newVelX = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
-            (m1 + m2)) * Math.cos(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.cos(collisionAngle + Math.PI/2);
-        var newVelY = ((v1*Math.cos(travelAngle - collisionAngle) * (this.mass - ent.mass) + 2*m2*v2*Math.cos(travelAngle2 - collisionAngle)) /
-            (m1 + m2)) * Math.sin(collisionAngle) + v1*Math.sin(travelAngle - collisionAngle)*Math.sin(collisionAngle + Math.PI/2);
-
-        this.velX = newVelX;
-        this.velY = newVelY;
+        ent.collided = BUMPER_COOLDOWN;
 
         return true;
     }
 };
 
 Puck.prototype.draw = function (ctx) {
-    ctx.drawImage(ASSET_MANAGER.getAsset(puck_img_path), this.x - this.img_offset, this.y - this.img_offset);
+    ctx.drawImage(ASSET_MANAGER.getAsset(puck_img_path), this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
     if (DRAW_DEBUG) {
         var color = "green";
         if (this.collided > 0) {
@@ -806,16 +763,16 @@ Puck.prototype.draw = function (ctx) {
 };
 
 Puck.prototype.reset = function () {
-    this.x = canvas_width/2;
-    this.y = canvas_height/2;
+    this.x = this.startx;
+    this.y = this.starty;
     this.velX = 0;
     this.velY = 0; 
 };
 
-function Bumper(game, x, y) {
+function Bumper(game, x, y, radius) {
     Entity.call(this, game, x, y);
-    this.radius = 54;
-    this.mass = Number.MAX_VALUE;
+    this.radius = radius;
+    this.mass = BUMPER_MASS;
     this.collided = 0;
     this.velX = 0;
     this.velY = 0;
@@ -831,7 +788,7 @@ Bumper.prototype.update = function() {
 
 Bumper.prototype.draw = function(ctx) {
     if (this.collided > 0) {
-        ctx.drawImage(ASSET_MANAGER.getAsset(red_bumper_path), this.x - radius, this.y - radius, this.radius * 2, this.radius * 2);
+        ctx.drawImage(ASSET_MANAGER.getAsset(red_bumper_path), this.x - this.radius - 2, this.y - this.radius - 2, this.radius * 2 + 4, this.radius * 2 + 4);
     }
     if (DRAW_DEBUG) {
         var color = "blue";
@@ -857,6 +814,9 @@ ScoreBoard.prototype = new Entity();
 ScoreBoard.prototype.constructor = ScoreBoard;
 
 ScoreBoard.prototype.update = function () {
+    this.score1.innerHTML = this.game.scores[0];
+    this.score2.innerHTML = this.game.scores[1];
+
     if (!this.game.running) return;
     
     this.elapsedTime += this.game.clockTick;
@@ -871,10 +831,8 @@ ScoreBoard.prototype.update = function () {
     
     this.clock.innerHTML =  minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
     this.frame.innerHTML = "PERIOD: " + this.game.period + "/" + NUM_PERIODS;
-    this.score1.innerHTML = this.game.cars[0].bumps;
-    this.score2.innerHTML = this.game.cars[1].bumps;
 
-    if (this.game.timeRemaining == 0) this.game.reset();
+    if (this.game.timeRemaining == 0) this.game.playGame.endGame();
 
 };
 
@@ -887,9 +845,23 @@ PlayGame.prototype.constructor = PlayGame;
 
 PlayGame.prototype.reset = function () {
     this.game.running = false;
+    //this.game.timeRemaining = PERIOD_LENGTH;
+    //this.game.period++;
+};
+
+PlayGame.prototype.endGame = function() {
+    this.game.running = false;
     this.game.timeRemaining = PERIOD_LENGTH;
     this.game.period++;
-};
+
+    if (this.game.scores[0] > this.game.scores[1]) {
+        ctx.fillText("Player 1 is the WINNER!", this.x-15, this.y);
+    } else if (this.game.cars[0].bumps < this.game.cars[1].bumps) {
+        ctx.fillText("Player 2 is the WINNER!", this.x-15, this.y);
+    } else {
+        ctx.fillText("TIE GAME!!!", this.x+62, this.y);
+    }
+}
 
 PlayGame.prototype.update = function () {
     if (this.game.click && this.game.timeRemaining > 0 && this.game.period <= NUM_PERIODS) this.game.running = true;
@@ -900,10 +872,10 @@ PlayGame.prototype.draw = function (ctx) {
         ctx.font = "24pt Impact";
         ctx.fillStyle = "white";
         if (this.game.mouse) { ctx.fillStyle = "pink"; }
-        if (this.game.period <= 3) {
+        if (this.game.period <= NUM_PERIODS) {
             ctx.fillText("Click to GET BUMPIN'!", this.x, this.y);
         } else {
-            if (this.game.cars[0].bumps > this.game.cars[1].bumps) {
+            if (this.game.scores[0] > this.game.scores[1]) {
                 ctx.fillText("Player 1 is the WINNER!", this.x-15, this.y);
             } else if (this.game.cars[0].bumps < this.game.cars[1].bumps) {
                 ctx.fillText("Player 2 is the WINNER!", this.x-15, this.y);
@@ -933,17 +905,21 @@ ASSET_MANAGER.downloadAll(function () {
     gameEngine.period = 1;
     gameEngine.running = false;
     
-    var puck = new Puck(gameEngine, canvas_width / 2, canvas_height / 2);
+    var puck = new Puck(gameEngine, PUCK_START_X, PUCK_START_Y);
     
-    var player1 = new Car(gameEngine, player1_start_x, player1_start_y, 1, car1_img_path);
+    var player1 = new Car(gameEngine, player1_start_x, player1_start_y, 1, car1_img_path, 90);
     player1.rotation = 90;
-    var player2 = new Car(gameEngine, player2_start_x, player2_start_y, 2, car2_img_path);
+    var player2 = new Car(gameEngine, player2_start_x, player2_start_y, 2, car2_img_path, 270);
     player2.rotation = 270;
 
-    var bumper1 = new Bumper(gameEngine, 410, 315);
-    var bumper2 = new Bumper(gameEngine, 412, 654);
-    var bumper3 = new Bumper(gameEngine, 897, 317);
-    var bumper4 = new Bumper(gameEngine, 902, 654);
+    var bumper1 = new Bumper(gameEngine, 412, 318, BUMPER_RADIUS);
+    var bumper2 = new Bumper(gameEngine, 413, 655, BUMPER_RADIUS);
+    var bumper3 = new Bumper(gameEngine, 899, 318, BUMPER_RADIUS);
+    var bumper4 = new Bumper(gameEngine, 904, 656, BUMPER_RADIUS);
+    var goal1 = new Bumper(gameEngine, ARENA_LEFT, GOAL_TOP, 1);
+    var goal2 = new Bumper(gameEngine, ARENA_LEFT, GOAL_BOTTOM, 1);
+    var goal3 = new Bumper(gameEngine, ARENA_RIGHT, GOAL_TOP, 1);
+    var goal4 = new Bumper(gameEngine, ARENA_RIGHT, GOAL_BOTTOM, 1);
     
     var pg = new PlayGame(gameEngine, 484, 235);
     
@@ -957,8 +933,13 @@ ASSET_MANAGER.downloadAll(function () {
     gameEngine.addEntity(bumper2);
     gameEngine.addEntity(bumper3);
     gameEngine.addEntity(bumper4);
+    gameEngine.addEntity(goal1);
+    gameEngine.addEntity(goal2);
+    gameEngine.addEntity(goal3);
+    gameEngine.addEntity(goal4);
     gameEngine.addEntity(pg);
     gameEngine.addEntity(sb);
+    gameEngine.playGame = pg;
     gameEngine.cars.push(player1);
     gameEngine.cars.push(player2);
     gameEngine.puck = puck;
@@ -966,6 +947,10 @@ ASSET_MANAGER.downloadAll(function () {
     gameEngine.bumpers.push(bumper2);
     gameEngine.bumpers.push(bumper3);
     gameEngine.bumpers.push(bumper4);
+    gameEngine.bumpers.push(goal1);
+    gameEngine.bumpers.push(goal2);
+    gameEngine.bumpers.push(goal3);
+    gameEngine.bumpers.push(goal4);
     gameEngine.init(ctx);
     gameEngine.start();
     ctx.canvas.focus();
