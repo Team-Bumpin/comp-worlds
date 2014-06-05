@@ -4,6 +4,8 @@
 var car1_img_path = "./img/blue_tiny.png"; // 142 x 73 pixels
 var car2_img_path = "./img/red_tiny.png"; // 146 x 67 pixels
 var puck_img_path = "./img/tron_mini_disc.png"; // 46 x 47 pixels
+var dust_img_path = "./img/smoke.png";
+var dust_img_offset = 48;
 var car_img_x_offset = 72;
 var car_img_y_offset = 35;
 var puck_img_offset = 23;
