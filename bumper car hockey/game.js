@@ -891,7 +891,6 @@ var ASSET_MANAGER = new AssetManager();
 ASSET_MANAGER.queueDownload(car1_img_path);
 ASSET_MANAGER.queueDownload(car2_img_path);
 ASSET_MANAGER.queueDownload(puck_img_path);
-ASSET_MANAGER.queueDownload(dust_img_path);
 ASSET_MANAGER.queueDownload(red_bumper_path);
 
 ASSET_MANAGER.downloadAll(function () {
