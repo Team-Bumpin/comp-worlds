@@ -36,8 +36,8 @@ var COLLISION_COOLDOWN = 1;
 var BUMPER_COOLDOWN = 12;
 var PUCK_COOLDOWN = 8;
 
-var NUM_PERIODS = 1;
-var PERIOD_LENGTH = 60; // seconds
+var NUM_PERIODS = 3;
+var PERIOD_LENGTH = 120; // seconds
 
 var DRAW_DEBUG = false;
 var TICK_FACTOR = 40;
@@ -139,7 +139,6 @@ function GameEngine() {
     this.ctx = null;
     this.click = null;
     this.mouse = null;
-    // this.wheel = null;
     this.keydown = null;
     this.surfaceWidth = null;
     this.surfaceHeight = null;
@@ -149,6 +148,7 @@ function GameEngine() {
     this.scores = [0, 0];
     this.playGame = null;
     this.smokeWait = 0;
+    this.goal_scored = false;
 }
 
 GameEngine.prototype.init = function (ctx) {
@@ -163,7 +163,6 @@ GameEngine.prototype.init = function (ctx) {
 GameEngine.prototype.start = function () {
     console.log("Starting game.");
     var that = this;
-    // that.countdown(PERIOD_LENGTH);
     (function gameLoop() {
         that.loop();
         requestAnimFrame(gameLoop, that.ctx.canvas);
@@ -188,9 +187,6 @@ GameEngine.prototype.startInput = function () {
         that.mouse = getXandY(e);
         //console.log("mouse[x=" + that.mouse.x + ",y=" + that.mouse.y + "]");
     }, false);
-    /*this.ctx.canvas.addEventListener("mousewheel", function (e) {
-        that.wheel = e;
-    }, false);*/
     
     this.ctx.canvas.addEventListener("keydown", function (e) {
         switch (e.which) {
@@ -304,7 +300,7 @@ GameEngine.prototype.doSmoke = function(x, y) {
         this.addEntity(new DustCloud(this, x, y));
         this.smokeWait = SMOKE_COOLDOWN;
     }
-}
+};
 
 GameEngine.prototype.update = function () {
     this.smokeWait = Math.max(0, this.smokeWait - 1);
@@ -371,11 +367,11 @@ GameEngine.prototype.loop = function () {
     this.update();
     this.draw();
     this.click = null;
-    // this.wheel = null;
     this.keydown = null;
 };
 
 GameEngine.prototype.scoreGoal = function(teamNum) {
+	this.goal_scored = true;
     this.scores[teamNum]++;
     this.reset();
 };
@@ -439,20 +435,20 @@ Animation.prototype.drawFrame = function(tick, ctx, x, y, scaleBy) {
         locX, locY,
         this.frameWidth*scaleBy,
         this.frameHeight*scaleBy);
-}
+};
 
 Animation.prototype.currentFrame = function() {
     return Math.floor(this.elapsedTime / this.frameDuration);
-}
+};
 
 Animation.prototype.isDone = function() {
     return (this.elapsedTime >= this.totalTime);
-}
+};
 
 function DustCloud(game, x, y) {
     Entity.call(this, game, x, y);
     this.sprite = ASSET_MANAGER.getAsset(dust_img_path);
-    this.animation = new Animation(this.sprite, 96, .05)
+    this.animation = new Animation(this.sprite, 96, .05);
 }
 
 DustCloud.prototype = new Entity();
@@ -465,13 +461,13 @@ DustCloud.prototype.update = function() {
         this.removeFromWorld = true;
         return;
     }
-}
+};
 
 DustCloud.prototype.draw = function(ctx) {
     this.animation.drawFrame(this.game.clockTick, ctx, this.x, this.y);
 
     Entity.prototype.draw.call(this, ctx);
-}
+};
 
 //////////////////////////////
 //// START BUMPIN CLASSES ////
@@ -515,7 +511,6 @@ function Car(game, x, y, player_num, img_path, rotation) {
     this.newVelY = null;
 	this.acceleration = 0.4;
 	this.speedDecay = 0.96;
-	this.rotation = 0;
 	this.rotationStep = 4;
 	this.maxSpeed = 8;
 	this.backSpeed = 5;
@@ -528,6 +523,8 @@ function Car(game, x, y, player_num, img_path, rotation) {
     this.startx = x;
     this.starty = y;
     this.startRotation = rotation;
+    this.rotation = this.startRotation;
+	
     
     Entity.call(this, game, x, y);
 }
@@ -903,7 +900,6 @@ Puck.prototype.reset = function () {
     this.velY = 0; 
 };
 
-
 // BUMPER
 function Bumper(game, x, y, radius) {
     Entity.call(this, game, x, y);
@@ -932,8 +928,7 @@ Bumper.prototype.draw = function(ctx) {
     }
 };
 
-Bumper.prototype.reset = function() {}
-
+Bumper.prototype.reset = function() {};
 
 // GOALIE
 function Goalie(game, x, y, radius, num) {
@@ -992,9 +987,6 @@ Goalie.prototype.reset = function () {
     this.y = this.starty;
 };
 
-
-
-
 /// === Scoring stuff === ///
 function ScoreBoard(game, x, y, clock, frame, score1, score2) {
     this.clock = clock;
@@ -1009,7 +1001,7 @@ ScoreBoard.prototype = new Entity();
 ScoreBoard.prototype.constructor = ScoreBoard;
 
 ScoreBoard.prototype.update = function () {
-    this.score1.innerHTML = this.game.scores[0];
+	this.score1.innerHTML = this.game.scores[0];
     this.score2.innerHTML = this.game.scores[1];
 
     if (!this.game.running) return;
@@ -1027,7 +1019,7 @@ ScoreBoard.prototype.update = function () {
     this.clock.innerHTML =  minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
     this.frame.innerHTML = "PERIOD: " + this.game.period + "/" + NUM_PERIODS;
 
-    if (this.game.timeRemaining == 0) this.game.playGame.endGame();
+    if (this.game.timeRemaining == 0) this.game.reset();
 
 };
 
@@ -1040,23 +1032,13 @@ PlayGame.prototype.constructor = PlayGame;
 
 PlayGame.prototype.reset = function () {
     this.game.running = false;
-    //this.game.timeRemaining = PERIOD_LENGTH;
-    //this.game.period++;
-};
-
-PlayGame.prototype.endGame = function() {
-    this.game.running = false;
-    this.game.timeRemaining = PERIOD_LENGTH;
-    this.game.period++;
-
-    if (this.game.scores[0] > this.game.scores[1]) {
-        ctx.fillText("Player 1 is the WINNER!", this.x-15, this.y);
-    } else if (this.game.cars[0].bumps < this.game.cars[1].bumps) {
-        ctx.fillText("Player 2 is the WINNER!", this.x-15, this.y);
+    if (this.game.goal_scored) {
+    	this.game.goal_scored = false;
     } else {
-        ctx.fillText("TIE GAME!!!", this.x+62, this.y);
+    	this.game.timeRemaining = PERIOD_LENGTH;
+    	this.game.period++;
     }
-}
+};
 
 PlayGame.prototype.update = function () {
     if (this.game.click && this.game.timeRemaining > 0 && this.game.period <= NUM_PERIODS) this.game.running = true;
@@ -1071,9 +1053,9 @@ PlayGame.prototype.draw = function (ctx) {
             ctx.fillText("Click to GET BUMPIN'!", this.x, this.y);
         } else {
             if (this.game.scores[0] > this.game.scores[1]) {
-                ctx.fillText("Player 1 is the WINNER!", this.x-15, this.y);
-            } else if (this.game.cars[0].bumps < this.game.cars[1].bumps) {
-                ctx.fillText("Player 2 is the WINNER!", this.x-15, this.y);
+                ctx.fillText("Player 1 is the WINNER!", this.x-11, this.y);
+            } else if (this.game.scores[0] < this.game.scores[1]) {
+                ctx.fillText("Player 2 is the WINNER!", this.x-11, this.y);
             } else {
                 ctx.fillText("TIE GAME!!!", this.x+62, this.y);
             }
@@ -1090,12 +1072,10 @@ ASSET_MANAGER.queueDownload(puck_img_path);
 ASSET_MANAGER.queueDownload(puck_img_path_lit);
 ASSET_MANAGER.queueDownload(red_bumper_path);
 ASSET_MANAGER.queueDownload(goalie_img_path);
-//ASSET_MANAGER.queueDownload(goalie_img_path2);
 ASSET_MANAGER.queueDownload(goalie_img_path_hit);
 ASSET_MANAGER.queueDownload(dust_img_path);
 
 ASSET_MANAGER.downloadAll(function () {
-    //console.log("starting up da sheild");
     var canvas = document.getElementById('gameWorld');
     var ctx = canvas.getContext('2d');
     
@@ -1108,10 +1088,8 @@ ASSET_MANAGER.downloadAll(function () {
     var puck = new Puck(gameEngine, PUCK_START_X, PUCK_START_Y);
     
     var player1 = new Car(gameEngine, player1_start_x, player1_start_y, 1, car1_img_path, 90);
-    player1.rotation = 90;
     var player2 = new Car(gameEngine, player2_start_x, player2_start_y, 2, car2_img_path, 270);
-    player2.rotation = 270;
-
+   	
     var bumper1 = new Bumper(gameEngine, 412, 318, BUMPER_RADIUS);
     var bumper2 = new Bumper(gameEngine, 413, 655, BUMPER_RADIUS);
     var bumper3 = new Bumper(gameEngine, 899, 318, BUMPER_RADIUS);
@@ -1121,7 +1099,7 @@ ASSET_MANAGER.downloadAll(function () {
     var goal3 = new Bumper(gameEngine, ARENA_RIGHT, GOAL_TOP, 1);
     var goal4 = new Bumper(gameEngine, ARENA_RIGHT, GOAL_BOTTOM, 1);
     
-    var pg = new PlayGame(gameEngine, 484, 235);
+    var pg = new PlayGame(gameEngine, 519, 335);
     
     var sb = new ScoreBoard(gameEngine, 0, 0, document.getElementById('clock'), document.getElementById('period'), 
                                               document.getElementById('score1'), document.getElementById('score2'));
